@@ -1,38 +1,42 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import { supabase } from './supabaseClient'
+import { AuthProvider, useAuth } from './AuthContext'
+import RequireAuth from './RequireAuth'
+import Dashboard from './Dashboard'
+import MainView from './MainView'
+import MyWorkspace from './MyWorkspace'
 
-// Placeholder pages — these get built out in later steps
-// (Step 5: Dashboard, Step 6: Main View, Step 7: My Workspace).
-// For now they just confirm routing works.
-
-function Dashboard() {
-  return <PagePlaceholder title="Dashboard" note="Real-time metrics + activity feed land in Step 5." />
-}
-
-function MainView() {
-  return <PagePlaceholder title="Main View" note="Read-only inspection table lands in Step 6." />
-}
-
-function MyWorkspace() {
-  return <PagePlaceholder title="My Workspace" note="Personal filtered view + editable fields land in Step 7." />
-}
-
-function PagePlaceholder({ title, note }) {
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-semibold text-gray-900">{title}</h1>
-      <p className="mt-2 text-gray-500">{note}</p>
-    </div>
-  )
-}
+// Pulls in the (large) xlsx parser — code-split so inspectors/data viewers
+// never download it, since only admin/data_master can reach this page.
+const DataUpload = lazy(() => import('./DataUpload'))
+const DataAdmin = lazy(() => import('./DataAdmin'))
 
 function Nav() {
+  const { profile, signOut } = useAuth()
+  const canManage = profile?.role === 'admin' || profile?.role === 'data_master'
+
   return (
-    <nav className="flex gap-6 border-b border-gray-200 px-8 py-4">
-      <Link to="/" className="font-medium text-gray-700 hover:text-gray-900">Dashboard</Link>
-      <Link to="/main-view" className="font-medium text-gray-700 hover:text-gray-900">Main View</Link>
-      <Link to="/my-workspace" className="font-medium text-gray-700 hover:text-gray-900">My Workspace</Link>
+    <nav className="flex items-center justify-between border-b border-gray-200 px-8 py-4">
+      <div className="flex gap-6">
+        <Link to="/" className="font-medium text-gray-700 hover:text-gray-900">Dashboard</Link>
+        <Link to="/main-view" className="font-medium text-gray-700 hover:text-gray-900">Main View</Link>
+        <Link to="/my-workspace" className="font-medium text-gray-700 hover:text-gray-900">My Workspace</Link>
+        {canManage && (
+          <>
+            <Link to="/data-upload" className="font-medium text-gray-700 hover:text-gray-900">Data Upload</Link>
+            <Link to="/data-admin" className="font-medium text-gray-700 hover:text-gray-900">Data Admin</Link>
+          </>
+        )}
+      </div>
+      <div className="flex items-center gap-4 text-sm">
+        <span className="text-gray-500">
+          {profile?.full_name} <span className="text-gray-400">({profile?.role})</span>
+        </span>
+        <button onClick={signOut} className="text-gray-500 hover:text-gray-900">
+          Sign out
+        </button>
+      </div>
     </nav>
   )
 }
@@ -65,13 +69,33 @@ function ConnectionBanner() {
 export default function App() {
   return (
     <BrowserRouter>
-      <ConnectionBanner />
-      <Nav />
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/main-view" element={<MainView />} />
-        <Route path="/my-workspace" element={<MyWorkspace />} />
-      </Routes>
+      <AuthProvider>
+        <RequireAuth>
+          <ConnectionBanner />
+          <Nav />
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/main-view" element={<MainView />} />
+            <Route path="/my-workspace" element={<MyWorkspace />} />
+            <Route
+              path="/data-upload"
+              element={
+                <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
+                  <DataUpload />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/data-admin"
+              element={
+                <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
+                  <DataAdmin />
+                </Suspense>
+              }
+            />
+          </Routes>
+        </RequireAuth>
+      </AuthProvider>
     </BrowserRouter>
   )
 }
