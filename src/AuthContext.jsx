@@ -35,7 +35,7 @@ export function AuthProvider({ children }) {
 
     supabase
       .from('profiles')
-      .select('id, full_name, role')
+      .select('id, full_name, role, account_status, email')
       .eq('id', session.user.id)
       .single()
       .then(({ data, error }) => {
@@ -49,6 +49,36 @@ export function AuthProvider({ children }) {
       cancelled = true
     }
   }, [session])
+
+  // Watch our own profile row live: an admin revoking access mid-session should
+  // sign the user out immediately, not just block them on their next load. An
+  // approval or role change should also flip the UI live, without a refresh.
+  useEffect(() => {
+    const userId = session?.user?.id
+    if (!userId || !profile) return
+
+    const channel = supabase
+      .channel(`profile-watch-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+        (payload) => {
+          if (payload.new.account_status === 'revoked') {
+            supabase.auth.signOut()
+            return
+          }
+          setProfile(payload.new)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+    // Intentionally excludes `profile` so realtime updates don't tear down and
+    // resubscribe the channel on every change — only (re)subscribe once loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, Boolean(profile)])
 
   const signOut = () => supabase.auth.signOut()
 

@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { useAuth } from './AuthContext'
-import { STATUS_FILTERS, DETAIL_COLUMNS, daysOpen } from './inspectionFormat'
+import {
+  STATUS_FILTERS,
+  DETAIL_COLUMNS,
+  formatInspectionType,
+  formatDate,
+  daysOpen,
+  daysOpenValue,
+} from './inspectionFormat'
 import { EditableText, EditableDate, EditableStatus } from './EditableCells'
 
 const COLUMNS = [
@@ -9,13 +16,23 @@ const COLUMNS = [
   { key: 'inspection_type', label: 'Inspection Type', sortable: true },
   { key: 'inspector', label: 'Primary Inspector', sortable: false },
   { key: 'inspection_date', label: 'Inspection Date', sortable: true },
-  { key: 'days_open', label: 'Days Open', sortable: true, sortKey: 'inspection_date' },
+  { key: 'days_open', label: 'Days Open', sortable: true },
   { key: 'status', label: 'Inspection Result', sortable: true },
   { key: 'report_finished_at', label: 'Report Finished', sortable: true },
   { key: 'notes', label: 'Inspector Notes', sortable: false },
   { key: 'distributor', label: 'Distributor', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true },
   { key: 'city', label: 'City', sortable: true },
+  { key: 'payment', label: 'Payment', sortable: false },
+  { key: 'file_request', label: 'File Request', sortable: false },
+  { key: 'address', label: 'Address', sortable: false },
+  { key: 'phone', label: 'Phone', sortable: false },
+  { key: 'measure', label: 'Measure', sortable: false },
+  { key: 'equipment', label: 'Equipment', sortable: false },
+  { key: 'quantity', label: 'Quantity', sortable: false },
+  { key: 'total_incentive', label: 'Total Incentive', sortable: false },
+  { key: 'additional_information', label: 'Additional Information', sortable: false },
+  { key: 'purchase_date', label: 'Purchase Date', sortable: false },
 ]
 
 export default function MyWorkspace() {
@@ -41,6 +58,9 @@ export default function MyWorkspace() {
         `id, invoice, inspection_type, inspection_date, status, report_finished_at, notes, distributor, customer, city, ${DETAIL_COLUMNS}`
       )
       .eq('assigned_to', userId)
+      // Once dispositioned (pass/fail) AND the report is finished, it's off the
+      // inspector's plate — it moves to Data Admin's Upload Required queue.
+      .or('status.eq.active,report_finished_at.is.null')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -164,8 +184,8 @@ export default function MyWorkspace() {
     if (!sortColumn) return filtered
     const dir = sortDirection === 'asc' ? 1 : -1
     return [...filtered].sort((a, b) => {
-      const av = a[sortColumn] ?? ''
-      const bv = b[sortColumn] ?? ''
+      const av = sortColumn === 'days_open' ? daysOpenValue(a) ?? -1 : a[sortColumn] ?? ''
+      const bv = sortColumn === 'days_open' ? daysOpenValue(b) ?? -1 : b[sortColumn] ?? ''
       if (av < bv) return -1 * dir
       if (av > bv) return 1 * dir
       return 0
@@ -248,7 +268,7 @@ export default function MyWorkspace() {
                 {sorted.map((row) => (
                   <tr key={row.id}>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.inspection_type}</td>
+                    <td className="px-5 py-3 text-gray-700">{formatInspectionType(row.inspection_type)}</td>
                     <td className="px-5 py-3 text-gray-700">{profile?.full_name ?? '—'}</td>
                     <td className="px-5 py-3">
                       <EditableDate
@@ -259,7 +279,7 @@ export default function MyWorkspace() {
                         onSave={handleFieldSave}
                       />
                     </td>
-                    <td className="px-5 py-3 text-gray-700">{daysOpen(row.inspection_date)}</td>
+                    <td className="px-5 py-3 text-gray-700">{daysOpen(row)}</td>
                     <td className="px-5 py-3">
                       <EditableStatus
                         key={`${row.id}-status-${row.status}`}
@@ -289,6 +309,16 @@ export default function MyWorkspace() {
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.city || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.payment ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.address || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.quantity ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.total_incentive ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.additional_information || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{formatDate(row.purchase_date)}</td>
                   </tr>
                 ))}
               </tbody>

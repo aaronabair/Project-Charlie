@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { useAuth } from './AuthContext'
-import { STATUS_FILTERS, DETAIL_COLUMNS, daysOpen } from './inspectionFormat'
+import { STATUS_FILTERS, DETAIL_COLUMNS, formatDate, daysOpen, isUploadRequired } from './inspectionFormat'
 import { SaveStatus, EditableText, EditableDate, EditableStatus } from './EditableCells'
+
+const FILTERS = [...STATUS_FILTERS, 'Upload Required']
 
 const COLUMNS = [
   { key: 'invoice', label: 'Invoice' },
   { key: 'inspection_type', label: 'Inspection Type' },
+  { key: 'quantity', label: 'Quantity' },
+  { key: 'total_incentive', label: 'Total Incentive' },
   { key: 'inspector', label: 'Primary Inspector' },
   { key: 'inspection_date', label: 'Inspection Date' },
   { key: 'days_open', label: 'Days Open' },
@@ -16,6 +20,16 @@ const COLUMNS = [
   { key: 'distributor', label: 'Distributor' },
   { key: 'customer', label: 'Customer' },
   { key: 'city', label: 'City' },
+  { key: 'payment', label: 'Payment' },
+  { key: 'file_request', label: 'File Request' },
+  { key: 'address', label: 'Address' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'measure', label: 'Measure' },
+  { key: 'equipment', label: 'Equipment' },
+  { key: 'additional_information', label: 'Additional Information' },
+  { key: 'purchase_date', label: 'Purchase Date' },
+  { key: 'data_year', label: 'Data Year' },
+  { key: 'batch_number', label: 'Batch #' },
 ]
 
 function EditableAssignee({ rowId, value, profiles, onSave }) {
@@ -40,6 +54,84 @@ function EditableAssignee({ rowId, value, profiles, onSave }) {
           </option>
         ))}
       </select>
+      <SaveStatus status={status} />
+    </div>
+  )
+}
+
+function EditableInspectionType({ rowId, value, overridden, onSave, onReset }) {
+  const [current, setCurrent] = useState(value ?? '')
+  const [status, setStatus] = useState(null)
+
+  return (
+    <div>
+      <select
+        value={current}
+        onChange={(e) => {
+          const next = e.target.value
+          setCurrent(next)
+          onSave(rowId, next, setStatus)
+        }}
+        className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+      >
+        <option value="physical">Physical</option>
+        <option value="call">Call</option>
+      </select>
+      <div className="mt-1 flex items-center gap-2">
+        <span className={overridden ? 'text-xs text-amber-600' : 'text-xs text-gray-400'}>
+          {overridden ? 'Overridden' : 'Auto'}
+        </span>
+        {overridden && (
+          <button
+            type="button"
+            onClick={() => onReset(rowId, setStatus)}
+            className="text-xs text-gray-500 underline hover:text-gray-900"
+          >
+            Reset to auto
+          </button>
+        )}
+      </div>
+      <SaveStatus status={status} />
+    </div>
+  )
+}
+
+function EditableNumber({ rowId, field, value, onSave }) {
+  const initial = value ?? ''
+  const [text, setText] = useState(String(initial))
+  const [status, setStatus] = useState(null)
+
+  return (
+    <div>
+      <input
+        type="number"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          if (text === String(initial)) return
+          const next = text === '' ? null : Number(text)
+          onSave(rowId, field, next, setStatus)
+        }}
+        className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+      />
+      <SaveStatus status={status} />
+    </div>
+  )
+}
+
+function MarkUploadedButton({ rowId, onSave }) {
+  const [status, setStatus] = useState(null)
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onSave(rowId, setStatus)}
+        disabled={status === 'saving'}
+        className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+      >
+        Mark uploaded
+      </button>
       <SaveStatus status={status} />
     </div>
   )
@@ -112,7 +204,7 @@ export default function DataAdmin() {
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_date, status, report_finished_at, notes, distributor, customer, city, assigned_to, ${DETAIL_COLUMNS}`
+        `id, invoice, inspection_type, inspection_type_overridden, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, city, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}`
       )
       .order('created_at', { ascending: false })
 
@@ -155,6 +247,48 @@ export default function DataAdmin() {
   async function handleFieldSave(rowId, field, value, setStatus) {
     setStatus('saving')
     const { error } = await supabase.from('inspections').update({ [field]: value }).eq('id', rowId)
+    if (error) {
+      setStatus(error.message)
+      return
+    }
+    setStatus('saved')
+    setTimeout(() => setStatus(null), 2000)
+  }
+
+  async function handleInspectionTypeSave(rowId, value, setStatus) {
+    setStatus('saving')
+    const { error } = await supabase
+      .from('inspections')
+      .update({ inspection_type: value, inspection_type_overridden: true })
+      .eq('id', rowId)
+    if (error) {
+      setStatus(error.message)
+      return
+    }
+    setStatus('saved')
+    setTimeout(() => setStatus(null), 2000)
+  }
+
+  async function handleInspectionTypeReset(rowId, setStatus) {
+    setStatus('saving')
+    const { error } = await supabase
+      .from('inspections')
+      .update({ inspection_type_overridden: false })
+      .eq('id', rowId)
+    if (error) {
+      setStatus(error.message)
+      return
+    }
+    setStatus('saved')
+    setTimeout(() => setStatus(null), 2000)
+  }
+
+  async function handleMarkUploaded(rowId, setStatus) {
+    setStatus('saving')
+    const { error } = await supabase
+      .from('inspections')
+      .update({ report_uploaded_at: new Date().toISOString() })
+      .eq('id', rowId)
     if (error) {
       setStatus(error.message)
       return
@@ -210,7 +344,11 @@ export default function DataAdmin() {
     const query = search.trim().toLowerCase()
 
     return inspections.filter((row) => {
-      if (statusFilter !== 'All' && row.status !== statusFilter.toLowerCase()) return false
+      if (statusFilter === 'Upload Required') {
+        if (!isUploadRequired(row)) return false
+      } else if (statusFilter !== 'All' && row.status !== statusFilter.toLowerCase()) {
+        return false
+      }
       if (!query) return true
 
       const assigneeName = profilesById[row.assigned_to] ?? ''
@@ -245,8 +383,8 @@ export default function DataAdmin() {
     <div className="p-8">
       <h1 className="text-2xl font-semibold text-gray-900">Data Admin</h1>
       <p className="mt-1 text-sm text-gray-500">
-        All inspections. Notes, result, inspection date, report finished, and primary inspector are
-        editable. Closed inspections can be reopened below.
+        All inspections. Notes, result, inspection date, report finished, primary inspector, quantity,
+        and total incentive are editable. Closed inspections can be reopened below.
       </p>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
@@ -261,7 +399,7 @@ export default function DataAdmin() {
         />
 
         <div className="flex gap-2">
-          {STATUS_FILTERS.map((option) => (
+          {FILTERS.map((option) => (
             <button
               key={option}
               type="button"
@@ -300,7 +438,34 @@ export default function DataAdmin() {
                 {filtered.map((row) => (
                   <tr key={row.id}>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.inspection_type}</td>
+                    <td className="px-5 py-3">
+                      <EditableInspectionType
+                        key={`${row.id}-inspection_type-${row.inspection_type}-${row.inspection_type_overridden}`}
+                        rowId={row.id}
+                        value={row.inspection_type}
+                        overridden={row.inspection_type_overridden}
+                        onSave={handleInspectionTypeSave}
+                        onReset={handleInspectionTypeReset}
+                      />
+                    </td>
+                    <td className="px-5 py-3">
+                      <EditableNumber
+                        key={`${row.id}-quantity-${row.quantity}`}
+                        rowId={row.id}
+                        field="quantity"
+                        value={row.quantity}
+                        onSave={handleFieldSave}
+                      />
+                    </td>
+                    <td className="px-5 py-3">
+                      <EditableNumber
+                        key={`${row.id}-total_incentive-${row.total_incentive}`}
+                        rowId={row.id}
+                        field="total_incentive"
+                        value={row.total_incentive}
+                        onSave={handleFieldSave}
+                      />
+                    </td>
                     <td className="px-5 py-3">
                       <EditableAssignee
                         key={`${row.id}-assigned_to-${row.assigned_to}`}
@@ -319,7 +484,7 @@ export default function DataAdmin() {
                         onSave={handleFieldSave}
                       />
                     </td>
-                    <td className="px-5 py-3 text-gray-700">{daysOpen(row.inspection_date)}</td>
+                    <td className="px-5 py-3 text-gray-700">{daysOpen(row)}</td>
                     <td className="px-5 py-3">
                       <EditableStatus
                         key={`${row.id}-status-${row.status}`}
@@ -349,16 +514,35 @@ export default function DataAdmin() {
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.city || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.payment ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.address || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.additional_information || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{formatDate(row.purchase_date)}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.data_year ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.batch_number ?? '—'}</td>
                     <td className="px-5 py-3">
-                      {(row.status === 'pass' || row.status === 'fail') && (
-                        <button
-                          type="button"
-                          onClick={() => openReopenModal(row)}
-                          className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-600 hover:bg-gray-50"
-                        >
-                          Reopen
-                        </button>
-                      )}
+                      <div className="flex flex-col items-start gap-2">
+                        {(row.status === 'pass' || row.status === 'fail') && (
+                          <button
+                            type="button"
+                            onClick={() => openReopenModal(row)}
+                            className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                          >
+                            Reopen
+                          </button>
+                        )}
+                        {isUploadRequired(row) && (
+                          <MarkUploadedButton
+                            key={`${row.id}-report_uploaded_at-${row.report_uploaded_at}`}
+                            rowId={row.id}
+                            onSave={handleMarkUploaded}
+                          />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

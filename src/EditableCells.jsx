@@ -14,15 +14,15 @@ export function EditableText({ rowId, field, value, onSave }) {
 
   return (
     <div>
-      <input
-        type="text"
+      <textarea
+        rows={3}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => {
           if (text === (value ?? '')) return
           onSave(rowId, field, text || null, setStatus)
         }}
-        className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+        className="w-full min-w-64 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
       />
       <SaveStatus status={status} />
     </div>

@@ -8,7 +8,6 @@ const SKIP = '__skip__'
 
 const TARGET_FIELDS = [
   { value: 'invoice', label: 'Invoice', type: 'text' },
-  { value: 'inspection_type', label: 'Inspection Type', type: 'text' },
   { value: 'file_request', label: 'File Request', type: 'text' },
   { value: 'payment', label: 'Payment', type: 'number' },
   { value: 'assigned_to', label: 'Primary Inspector (name → ID not yet supported)', type: 'assigned' },
@@ -34,6 +33,11 @@ const TARGET_FIELDS = [
 
 const TARGET_FIELD_META = Object.fromEntries(TARGET_FIELDS.map((f) => [f.value, f]))
 
+// Data Year / Batch # are set once per import, not per spreadsheet row — they're
+// deliberately not TARGET_FIELDS entries, since no spreadsheet header should map to them.
+const CURRENT_YEAR = new Date().getFullYear()
+const YEAR_OPTIONS = Array.from({ length: 7 }, (_, i) => CURRENT_YEAR - 5 + i)
+
 const STATUS_ALIASES = {
   pass: 'pass',
   passed: 'pass',
@@ -51,6 +55,24 @@ function normalizeStatus(raw) {
   const key = String(raw ?? '').trim().toLowerCase()
   if (STATUS_ALIASES[key]) return { value: STATUS_ALIASES[key], flagged: false }
   return { value: 'active', flagged: true }
+}
+
+// Some source cells stack multiple line items in one cell via Alt+Enter
+// (e.g. "1\n5\n17\n21"). Quantity should be their sum, not a parse failure.
+function normalizeQuantity(raw) {
+  if (raw === '' || raw == null) return { value: null, summed: false, parts: [] }
+
+  const parts = String(raw)
+    .split(/\r\n|\n|\r/)
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+    .map((s) => Number(s.replace(/[^0-9.-]/g, '')))
+    .filter((n) => Number.isFinite(n))
+
+  if (parts.length === 0) return { value: null, summed: false, parts: [] }
+
+  const sum = parts.reduce((a, b) => a + b, 0)
+  return { value: sum, summed: parts.length > 1, parts }
 }
 
 function normalizeValue(raw, type) {
@@ -74,10 +96,12 @@ function normalizeValue(raw, type) {
   }
 }
 
-function buildMappedRow(sourceRow, finalMap) {
-  const target = {}
+function buildMappedRow(sourceRow, finalMap, dataYear, batchNumber) {
+  const target = { data_year: dataYear, batch_number: batchNumber }
   let flaggedStatus = false
   let statusOriginal = null
+  let flaggedQuantity = false
+  let quantityDetail = null
 
   for (const header of Object.keys(finalMap)) {
     const targetField = finalMap[header]
@@ -95,11 +119,21 @@ function buildMappedRow(sourceRow, finalMap) {
       continue
     }
 
+    if (targetField === 'quantity') {
+      const result = normalizeQuantity(raw)
+      target.quantity = result.value
+      if (result.summed) {
+        flaggedQuantity = true
+        quantityDetail = `Quantity: summed ${result.parts.length} values (${result.parts.join('+')}=${result.value})`
+      }
+      continue
+    }
+
     const meta = TARGET_FIELD_META[targetField]
     target[targetField] = normalizeValue(raw, meta?.type ?? 'text')
   }
 
-  return { target, sourceRow, flaggedStatus, statusOriginal }
+  return { target, sourceRow, flaggedStatus, statusOriginal, flaggedQuantity, quantityDetail }
 }
 
 function parseCsv(file) {
@@ -132,11 +166,20 @@ async function parseXlsx(file) {
   return { headers, rows }
 }
 
+// Excel's "used range" often inflates past the real data, leaving trailing
+// rows where every cell is empty — drop those rather than importing them.
+function isRowBlank(row) {
+  return Object.values(row).every((v) => v === null || v === undefined || String(v).trim() === '')
+}
+
 async function parseFile(file) {
   const name = file.name.toLowerCase()
-  if (name.endsWith('.csv')) return parseCsv(file)
-  if (name.endsWith('.xlsx') || name.endsWith('.xls')) return parseXlsx(file)
-  throw new Error('Unsupported file type. Please upload a .csv or .xlsx file.')
+  let result
+  if (name.endsWith('.csv')) result = await parseCsv(file)
+  else if (name.endsWith('.xlsx') || name.endsWith('.xls')) result = await parseXlsx(file)
+  else throw new Error('Unsupported file type. Please upload a .csv or .xlsx file.')
+
+  return { headers: result.headers, rows: result.rows.filter((row) => !isRowBlank(row)) }
 }
 
 export default function DataUpload() {
@@ -157,7 +200,13 @@ export default function DataUpload() {
   const [mappedRows, setMappedRows] = useState([])
   const [summary, setSummary] = useState(null)
 
+  const [dataYear, setDataYear] = useState(CURRENT_YEAR)
+  const [batchNumber, setBatchNumber] = useState('')
+
   const canUpload = profile?.role === 'admin' || profile?.role === 'data_master'
+
+  const batchNumberValid = batchNumber !== '' && Number.isInteger(Number(batchNumber))
+  const importDetailsComplete = !!dataYear && batchNumberValid
 
   const autoMappedHeaders = useMemo(
     () => parsedHeaders.filter((h) => autoMap[h]),
@@ -193,7 +242,12 @@ export default function DataUpload() {
 
       const map = {}
       for (const m of mappings ?? []) {
-        map[m.source_header] = m.target_field
+        // A previously-learned mapping may point at a field that's since been
+        // removed from TARGET_FIELDS (e.g. inspection_type going computed-only).
+        // Treat those as unrecognized rather than trusting a stale target.
+        if (TARGET_FIELD_META[m.target_field]) {
+          map[m.source_header] = m.target_field
+        }
       }
 
       const initialAssignments = {}
@@ -237,7 +291,7 @@ export default function DataUpload() {
     }
 
     setFinalMap(map)
-    setMappedRows(parsedRows.map((row) => buildMappedRow(row, map)))
+    setMappedRows(parsedRows.map((row) => buildMappedRow(row, map, dataYear, Number(batchNumber))))
     setStep('preview')
   }
 
@@ -255,11 +309,11 @@ export default function DataUpload() {
       return
     }
 
-    const flagged = mappedRows
-      .map((r, i) => ({ ...r, rowNumber: i + 2 })) // +2: header row + 1-indexing
-      .filter((r) => r.flaggedStatus)
+    const numberedRows = mappedRows.map((r, i) => ({ ...r, rowNumber: i + 2 })) // +2: header row + 1-indexing
+    const flaggedStatus = numberedRows.filter((r) => r.flaggedStatus)
+    const flaggedQuantity = numberedRows.filter((r) => r.flaggedQuantity)
 
-    setSummary({ imported: data?.length ?? payload.length, flagged })
+    setSummary({ imported: data?.length ?? payload.length, flaggedStatus, flaggedQuantity })
     setStep('summary')
   }
 
@@ -274,6 +328,8 @@ export default function DataUpload() {
     setFinalMap({})
     setMappedRows([])
     setSummary(null)
+    setDataYear(CURRENT_YEAR)
+    setBatchNumber('')
   }
 
   if (!canUpload) {
@@ -317,6 +373,46 @@ export default function DataUpload() {
           <p className="text-sm text-gray-500">
             File: <span className="font-medium text-gray-700">{fileName}</span> · {parsedRows.length} rows
           </p>
+
+          <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <h2 className="text-sm font-semibold text-gray-900">Import details</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Applied to every row in this file — not read from the spreadsheet.
+            </p>
+            <div className="mt-3 flex flex-col gap-4 sm:flex-row">
+              <div>
+                <label htmlFor="data-year" className="block text-sm font-medium text-gray-700">
+                  Data Year
+                </label>
+                <select
+                  id="data-year"
+                  value={dataYear}
+                  onChange={(e) => setDataYear(Number(e.target.value))}
+                  className="mt-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                >
+                  {YEAR_OPTIONS.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="batch-number" className="block text-sm font-medium text-gray-700">
+                  Batch #
+                </label>
+                <input
+                  id="batch-number"
+                  type="number"
+                  step="1"
+                  value={batchNumber}
+                  onChange={(e) => setBatchNumber(e.target.value)}
+                  placeholder="e.g. 12"
+                  className="mt-1 w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                />
+              </div>
+            </div>
+          </div>
 
           {mappingHasAssignedTo && (
             <p className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -380,20 +476,28 @@ export default function DataUpload() {
             <button
               type="button"
               onClick={handleConfirmMapping}
-              disabled={!allResolved}
+              disabled={!allResolved || !importDetailsComplete}
               className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               Confirm mapping
             </button>
           </div>
+          {!importDetailsComplete && (
+            <p className="text-sm text-amber-700">Data Year and a valid Batch # are required to continue.</p>
+          )}
         </div>
       )}
 
       {step === 'preview' && (
         <div className="mt-6 space-y-6">
           <p className="text-sm text-gray-500">
+            Data Year <span className="font-medium text-gray-700">{dataYear}</span> · Batch #{' '}
+            <span className="font-medium text-gray-700">{batchNumber}</span> — applied to every row below.
+          </p>
+          <p className="text-sm text-gray-500">
             Previewing the first 10 of {mappedRows.length} rows. Statuses that couldn't be matched are
-            flagged and default to "active".
+            flagged and default to "active". Quantity cells with multiple stacked line items are summed
+            and flagged for a quick visual check.
           </p>
 
           <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -418,6 +522,13 @@ export default function DataUpload() {
                               {row.target.status}
                               <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
                                 needs review
+                              </span>
+                            </span>
+                          ) : col.value === 'quantity' && row.flaggedQuantity ? (
+                            <span className="inline-flex items-center gap-1" title={row.quantityDetail}>
+                              {row.target.quantity}
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                summed
                               </span>
                             </span>
                           ) : (
@@ -456,14 +567,19 @@ export default function DataUpload() {
         <div className="mt-6 space-y-4">
           <div className="rounded-lg border border-gray-200 bg-white p-5">
             <p className="text-sm text-gray-900">{summary.imported} rows imported.</p>
-            {summary.flagged.length > 0 ? (
+
+            {summary.flaggedStatus.length === 0 && summary.flaggedQuantity.length === 0 && (
+              <p className="mt-2 text-sm text-gray-500">No rows needed review.</p>
+            )}
+
+            {summary.flaggedStatus.length > 0 && (
               <>
                 <p className="mt-2 text-sm text-amber-700">
-                  {summary.flagged.length} row{summary.flagged.length === 1 ? '' : 's'} flagged for review —
-                  status value didn't match a known result and defaulted to "active":
+                  {summary.flaggedStatus.length} row{summary.flaggedStatus.length === 1 ? '' : 's'} flagged
+                  for review — status value didn't match a known result and defaulted to "active":
                 </p>
                 <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                  {summary.flagged.map((r, i) => (
+                  {summary.flaggedStatus.map((r, i) => (
                     <li key={i}>
                       Row {r.rowNumber}
                       {r.target.invoice ? ` (invoice ${r.target.invoice})` : ''}: got "
@@ -472,8 +588,23 @@ export default function DataUpload() {
                   ))}
                 </ul>
               </>
-            ) : (
-              <p className="mt-2 text-sm text-gray-500">No rows needed review.</p>
+            )}
+
+            {summary.flaggedQuantity.length > 0 && (
+              <>
+                <p className="mt-3 text-sm text-amber-700">
+                  {summary.flaggedQuantity.length} row{summary.flaggedQuantity.length === 1 ? '' : 's'}{' '}
+                  had a stacked quantity cell — please confirm the sum:
+                </p>
+                <ul className="mt-2 space-y-1 text-sm text-gray-600">
+                  {summary.flaggedQuantity.map((r, i) => (
+                    <li key={i}>
+                      Row {r.rowNumber}
+                      {r.target.invoice ? ` (invoice ${r.target.invoice})` : ''}: {r.quantityDetail}
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
 

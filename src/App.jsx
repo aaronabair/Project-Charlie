@@ -11,10 +11,13 @@ import MyWorkspace from './MyWorkspace'
 // never download it, since only admin/data_master can reach this page.
 const DataUpload = lazy(() => import('./DataUpload'))
 const DataAdmin = lazy(() => import('./DataAdmin'))
+const Reports = lazy(() => import('./Reports'))
+const UserManagement = lazy(() => import('./UserManagement'))
 
 function Nav() {
   const { profile, signOut } = useAuth()
   const canManage = profile?.role === 'admin' || profile?.role === 'data_master'
+  const isAdmin = profile?.role === 'admin'
 
   return (
     <nav className="flex items-center justify-between border-b border-gray-200 px-8 py-4">
@@ -26,7 +29,11 @@ function Nav() {
           <>
             <Link to="/data-upload" className="font-medium text-gray-700 hover:text-gray-900">Data Upload</Link>
             <Link to="/data-admin" className="font-medium text-gray-700 hover:text-gray-900">Data Admin</Link>
+            <Link to="/reports" className="font-medium text-gray-700 hover:text-gray-900">Reports</Link>
           </>
+        )}
+        {isAdmin && (
+          <Link to="/user-management" className="font-medium text-gray-700 hover:text-gray-900">User Management</Link>
         )}
       </div>
       <div className="flex items-center gap-4 text-sm">
@@ -90,6 +97,22 @@ export default function App() {
               element={
                 <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
                   <DataAdmin />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
+                  <Reports />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/user-management"
+              element={
+                <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
+                  <UserManagement />
                 </Suspense>
               }
             />

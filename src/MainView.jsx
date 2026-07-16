@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
-import { STATUS_FILTERS, DETAIL_COLUMNS, StatusBadge, formatDate, daysOpen } from './inspectionFormat'
+import { STATUS_FILTERS, DETAIL_COLUMNS, StatusBadge, formatDate, formatInspectionType, daysOpen } from './inspectionFormat'
 
 export default function MainView() {
   const [inspections, setInspections] = useState([])
@@ -13,7 +13,7 @@ export default function MainView() {
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_date, status, report_finished_at, notes, distributor, customer, city, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
+        `id, invoice, inspection_type, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, city, data_year, batch_number, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
       )
       .order('created_at', { ascending: false })
 
@@ -53,6 +53,15 @@ export default function MainView() {
       )
     })
   }, [inspections, search, statusFilter])
+
+  // Under "All" specifically, sink fully-completed rows (report uploaded) to the
+  // bottom rather than mixing them in with everything still needing attention.
+  const displayRows = useMemo(() => {
+    if (statusFilter !== 'All') return filtered
+    const notCompleted = filtered.filter((row) => !row.report_uploaded_at)
+    const completed = filtered.filter((row) => row.report_uploaded_at)
+    return [...notCompleted, ...completed]
+  }, [filtered, statusFilter])
 
   if (loading) {
     return (
@@ -99,7 +108,7 @@ export default function MainView() {
       <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white">
         {inspections.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-gray-500">No inspections yet</p>
-        ) : filtered.length === 0 ? (
+        ) : displayRows.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-gray-500">No inspections match your filters</p>
         ) : (
           <div className="overflow-x-auto">
@@ -117,24 +126,50 @@ export default function MainView() {
                   <th className="px-5 py-3 font-medium">Distributor</th>
                   <th className="px-5 py-3 font-medium">Customer</th>
                   <th className="px-5 py-3 font-medium">City</th>
+                  <th className="px-5 py-3 font-medium">Payment</th>
+                  <th className="px-5 py-3 font-medium">File Request</th>
+                  <th className="px-5 py-3 font-medium">Address</th>
+                  <th className="px-5 py-3 font-medium">Phone</th>
+                  <th className="px-5 py-3 font-medium">Measure</th>
+                  <th className="px-5 py-3 font-medium">Equipment</th>
+                  <th className="px-5 py-3 font-medium">Quantity</th>
+                  <th className="px-5 py-3 font-medium">Total Incentive</th>
+                  <th className="px-5 py-3 font-medium">Additional Information</th>
+                  <th className="px-5 py-3 font-medium">Purchase Date</th>
+                  <th className="px-5 py-3 font-medium">Data Year</th>
+                  <th className="px-5 py-3 font-medium">Batch #</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((row) => (
+                {displayRows.map((row) => (
                   <tr key={row.id}>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.inspection_type}</td>
+                    <td className="px-5 py-3 text-gray-700">{formatInspectionType(row.inspection_type)}</td>
                     <td className="px-5 py-3 text-gray-700">{row.profiles?.full_name ?? 'Unassigned'}</td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(row.inspection_date)}</td>
-                    <td className="px-5 py-3 text-gray-700">{daysOpen(row.inspection_date)}</td>
+                    <td className="px-5 py-3 text-gray-700">{daysOpen(row)}</td>
                     <td className="px-5 py-3">
                       <StatusBadge status={row.status} />
                     </td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(row.report_finished_at)}</td>
-                    <td className="px-5 py-3 text-gray-500">{row.notes || '—'}</td>
+                    <td className="min-w-64 whitespace-normal break-words px-5 py-3 text-gray-500">
+                      {row.notes || '—'}
+                    </td>
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.city || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.payment ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.address || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.quantity ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.total_incentive ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.additional_information || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{formatDate(row.purchase_date)}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.data_year ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.batch_number ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
