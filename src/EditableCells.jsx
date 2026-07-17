@@ -51,6 +51,27 @@ export function EditableDate({ rowId, field, value, onSave }) {
   )
 }
 
+export function EditableCheckbox({ rowId, field, value, onSave }) {
+  const [checked, setChecked] = useState(!!value)
+  const [status, setStatus] = useState(null)
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => {
+          const next = e.target.checked
+          setChecked(next)
+          onSave(rowId, field, next, setStatus)
+        }}
+        className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
+      />
+      <SaveStatus status={status} />
+    </div>
+  )
+}
+
 export function EditableStatus({ rowId, value, onSave }) {
   const [status, setStatus] = useState(value)
   const [saveStatus, setSaveStatus] = useState(null)

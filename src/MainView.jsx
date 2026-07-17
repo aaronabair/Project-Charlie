@@ -166,7 +166,14 @@ export default function MainView() {
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.quantity ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.total_incentive ?? '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.additional_information || '—'}</td>
+                    <td className="px-5 py-3">
+                      <input
+                        type="checkbox"
+                        checked={!!row.additional_information}
+                        disabled
+                        className="h-4 w-4 rounded border-gray-300 text-gray-900"
+                      />
+                    </td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(row.purchase_date)}</td>
                     <td className="px-5 py-3 text-gray-700">{row.data_year ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.batch_number ?? '—'}</td>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { useAuth } from './AuthContext'
 import { STATUS_FILTERS, DETAIL_COLUMNS, formatDate, daysOpen, isUploadRequired } from './inspectionFormat'
-import { SaveStatus, EditableText, EditableDate, EditableStatus } from './EditableCells'
+import { SaveStatus, EditableText, EditableDate, EditableStatus, EditableCheckbox } from './EditableCells'
 
 const FILTERS = [...STATUS_FILTERS, 'Upload Required']
 
@@ -520,7 +520,15 @@ export default function DataAdmin() {
                     <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.additional_information || '—'}</td>
+                    <td className="px-5 py-3">
+                      <EditableCheckbox
+                        key={`${row.id}-additional_information-${row.additional_information}`}
+                        rowId={row.id}
+                        field="additional_information"
+                        value={row.additional_information}
+                        onSave={handleFieldSave}
+                      />
+                    </td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(row.purchase_date)}</td>
                     <td className="px-5 py-3 text-gray-700">{row.data_year ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.batch_number ?? '—'}</td>

@@ -25,7 +25,7 @@ const TARGET_FIELDS = [
   { value: 'equipment', label: 'Equipment', type: 'text' },
   { value: 'quantity', label: 'Quantity', type: 'number' },
   { value: 'total_incentive', label: 'Total Incentive', type: 'number' },
-  { value: 'additional_information', label: 'Additional Information', type: 'text' },
+  { value: 'additional_information', label: 'Additional Information', type: 'boolean' },
   { value: 'uploaded_at', label: 'Uploaded', type: 'timestamp' },
   { value: 'external_id', label: 'External ID', type: 'text' },
   { value: 'due_date', label: 'Due Date', type: 'date' },
@@ -76,6 +76,14 @@ function normalizeQuantity(raw) {
 }
 
 function normalizeValue(raw, type) {
+  // Bypasses the empty-check below: a boolean column has no valid "missing"
+  // state to fall back to null for — an unrecognized/blank cell means false,
+  // matching the column's own default.
+  if (type === 'boolean') {
+    const key = String(raw ?? '').trim().toLowerCase()
+    return ['true', 'yes', 'y', '1', 'x', 'checked'].includes(key)
+  }
+
   if (raw === '' || raw == null) return null
 
   switch (type) {

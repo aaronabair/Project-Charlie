@@ -9,7 +9,7 @@ import {
   daysOpen,
   daysOpenValue,
 } from './inspectionFormat'
-import { EditableText, EditableDate, EditableStatus } from './EditableCells'
+import { EditableText, EditableDate, EditableStatus, EditableCheckbox } from './EditableCells'
 
 const COLUMNS = [
   { key: 'invoice', label: 'Invoice', sortable: true },
@@ -317,7 +317,15 @@ export default function MyWorkspace() {
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.quantity ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.total_incentive ?? '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.additional_information || '—'}</td>
+                    <td className="px-5 py-3">
+                      <EditableCheckbox
+                        key={`${row.id}-additional_information-${row.additional_information}`}
+                        rowId={row.id}
+                        field="additional_information"
+                        value={row.additional_information}
+                        onSave={handleFieldSave}
+                      />
+                    </td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(row.purchase_date)}</td>
                   </tr>
                 ))}
