@@ -6,6 +6,7 @@ import RequireAuth from './RequireAuth'
 import Dashboard from './Dashboard'
 import MainView from './MainView'
 import MyWorkspace from './MyWorkspace'
+import Notifications from './Notifications'
 
 // Pulls in the (large) xlsx parser — code-split so inspectors/data viewers
 // never download it, since only admin/data_master can reach this page.
@@ -37,6 +38,7 @@ function Nav() {
         )}
       </div>
       <div className="flex items-center gap-4 text-sm">
+        <Notifications />
         <span className="text-gray-500">
           {profile?.full_name} <span className="text-gray-400">({profile?.role})</span>
         </span>

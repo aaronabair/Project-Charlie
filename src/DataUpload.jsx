@@ -312,8 +312,18 @@ export default function DataUpload() {
     const numberedRows = mappedRows.map((r, i) => ({ ...r, rowNumber: i + 2 })) // +2: header row + 1-indexing
     const flaggedStatus = numberedRows.filter((r) => r.flaggedStatus)
     const flaggedQuantity = numberedRows.filter((r) => r.flaggedQuantity)
+    const importedCount = data?.length ?? payload.length
 
-    setSummary({ imported: data?.length ?? payload.length, flaggedStatus, flaggedQuantity })
+    // Best-effort: the import itself already succeeded, so a notification
+    // failure shouldn't surface as an import error.
+    const { error: notifyError } = await supabase.rpc('notify_data_masters_of_upload', {
+      row_count: importedCount,
+      p_data_year: dataYear,
+      p_batch_number: Number(batchNumber),
+    })
+    if (notifyError) console.error('Failed to send upload notification:', notifyError)
+
+    setSummary({ imported: importedCount, flaggedStatus, flaggedQuantity })
     setStep('summary')
   }
 
