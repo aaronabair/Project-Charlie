@@ -204,6 +204,7 @@ export default function Dashboard() {
   return (
     <div className="p-8">
       <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+      <p className="mt-1 text-lg text-gray-500">Welcome, BIDP Inspectors</p>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
