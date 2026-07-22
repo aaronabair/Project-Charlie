@@ -190,6 +190,29 @@ async function parseFile(file) {
   return { headers: result.headers, rows: result.rows.filter((row) => !isRowBlank(row)) }
 }
 
+function HeaderMappingRow({ header, value, onChange }) {
+  return (
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-sm text-gray-900">{header}</span>
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full max-w-xs rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+      >
+        <option value="" disabled>
+          Choose a column...
+        </option>
+        <option value={SKIP}>Skip this column</option>
+        {TARGET_FIELDS.map((f) => (
+          <option key={f.value} value={f.value}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 export default function DataUpload() {
   const { session, profile } = useAuth()
 
@@ -203,6 +226,7 @@ export default function DataUpload() {
   const [parsedRows, setParsedRows] = useState([])
   const [autoMap, setAutoMap] = useState({})
   const [headerAssignments, setHeaderAssignments] = useState({})
+  const [overriddenHeaders, setOverriddenHeaders] = useState(() => new Set())
 
   const [finalMap, setFinalMap] = useState({})
   const [mappedRows, setMappedRows] = useState([])
@@ -224,12 +248,24 @@ export default function DataUpload() {
     () => parsedHeaders.filter((h) => !autoMap[h]),
     [parsedHeaders, autoMap]
   )
-  const allResolved = unrecognizedHeaders.every((h) => headerAssignments[h])
+  const allResolved =
+    unrecognizedHeaders.every((h) => headerAssignments[h]) &&
+    [...overriddenHeaders].every((h) => headerAssignments[h])
 
+  // Current effective choice per header — the manual assignment if one was made
+  // (including an override of an auto-mapped header), otherwise the auto-map.
   const mappingHasAssignedTo = useMemo(() => {
-    const assigned = [...autoMappedHeaders.map((h) => autoMap[h]), ...Object.values(headerAssignments)]
-    return assigned.includes('assigned_to')
-  }, [autoMappedHeaders, autoMap, headerAssignments])
+    return parsedHeaders.some((h) => (headerAssignments[h] ?? autoMap[h]) === 'assigned_to')
+  }, [parsedHeaders, autoMap, headerAssignments])
+
+  function startManualOverride(header) {
+    setOverriddenHeaders((prev) => {
+      const next = new Set(prev)
+      next.add(header)
+      return next
+    })
+    setHeaderAssignments((prev) => ({ ...prev, [header]: autoMap[header] }))
+  }
 
   async function handleFileChange(e) {
     const file = e.target.files?.[0]
@@ -268,6 +304,7 @@ export default function DataUpload() {
       setParsedRows(rows)
       setAutoMap(map)
       setHeaderAssignments(initialAssignments)
+      setOverriddenHeaders(new Set())
       setStep('mapping')
     } catch (err) {
       setError(err.message)
@@ -280,6 +317,8 @@ export default function DataUpload() {
   async function handleConfirmMapping() {
     setError(null)
 
+    // Brand-new headers: only persist real (non-skip) choices — a skip leaves
+    // it unrecognized again next time, same as today.
     const newMappings = unrecognizedHeaders
       .filter((h) => headerAssignments[h] && headerAssignments[h] !== SKIP)
       .map((h) => ({ source_header: h, target_field: headerAssignments[h], created_by: session?.user?.id }))
@@ -292,9 +331,35 @@ export default function DataUpload() {
       }
     }
 
+    // Manually-corrected auto-mapped headers: overwrite the saved mapping so
+    // the correction sticks for future uploads too. A correction to "skip"
+    // removes the saved mapping entirely, so it's re-prompted next time
+    // instead of continuing to auto-map to the field we just said was wrong.
+    for (const h of overriddenHeaders) {
+      const chosen = headerAssignments[h]
+      if (!chosen) continue
+
+      if (chosen === SKIP) {
+        const { error: deleteError } = await supabase.from('column_mappings').delete().eq('source_header', h)
+        if (deleteError) {
+          setError(`Failed to update column mapping for "${h}": ${deleteError.message}`)
+          return
+        }
+      } else {
+        const { error: updateError } = await supabase
+          .from('column_mappings')
+          .update({ target_field: chosen })
+          .eq('source_header', h)
+        if (updateError) {
+          setError(`Failed to update column mapping for "${h}": ${updateError.message}`)
+          return
+        }
+      }
+    }
+
     const map = {}
     for (const h of parsedHeaders) {
-      const assigned = autoMap[h] ?? headerAssignments[h]
+      const assigned = headerAssignments[h] ?? autoMap[h]
       if (assigned && assigned !== SKIP) map[h] = assigned
     }
 
@@ -343,6 +408,7 @@ export default function DataUpload() {
     setParsedRows([])
     setAutoMap({})
     setHeaderAssignments({})
+    setOverriddenHeaders(new Set())
     setFinalMap({})
     setMappedRows([])
     setSummary(null)
@@ -442,14 +508,32 @@ export default function DataUpload() {
           {autoMappedHeaders.length > 0 && (
             <div className="rounded-lg border border-gray-200 bg-white p-5">
               <h2 className="text-sm font-semibold text-gray-900">Auto-mapped columns</h2>
-              <ul className="mt-3 space-y-1 text-sm text-gray-600">
-                {autoMappedHeaders.map((h) => (
-                  <li key={h}>
-                    <span className="text-gray-900">{h}</span> →{' '}
-                    {TARGET_FIELD_META[autoMap[h]]?.label ?? autoMap[h]}
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-3 space-y-3">
+                {autoMappedHeaders.map((h) =>
+                  overriddenHeaders.has(h) ? (
+                    <HeaderMappingRow
+                      key={h}
+                      header={h}
+                      value={headerAssignments[h]}
+                      onChange={(value) => setHeaderAssignments((prev) => ({ ...prev, [h]: value }))}
+                    />
+                  ) : (
+                    <div key={h} className="flex items-center justify-between gap-3 text-sm">
+                      <span>
+                        <span className="text-gray-900">{h}</span> →{' '}
+                        <span className="text-gray-600">{TARGET_FIELD_META[autoMap[h]]?.label ?? autoMap[h]}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => startManualOverride(h)}
+                        className="shrink-0 text-xs font-medium text-gray-500 underline hover:text-gray-900"
+                      >
+                        Manual map
+                      </button>
+                    </div>
+                  )
+                )}
+              </div>
             </div>
           )}
 
@@ -458,26 +542,12 @@ export default function DataUpload() {
               <h2 className="text-sm font-semibold text-gray-900">Unrecognized headers — map or skip each one</h2>
               <div className="mt-3 space-y-3">
                 {unrecognizedHeaders.map((h) => (
-                  <div key={h} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="text-sm text-gray-900">{h}</span>
-                    <select
-                      value={headerAssignments[h] ?? ''}
-                      onChange={(e) =>
-                        setHeaderAssignments((prev) => ({ ...prev, [h]: e.target.value }))
-                      }
-                      className="w-full max-w-xs rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
-                    >
-                      <option value="" disabled>
-                        Choose a column...
-                      </option>
-                      <option value={SKIP}>Skip this column</option>
-                      {TARGET_FIELDS.map((f) => (
-                        <option key={f.value} value={f.value}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <HeaderMappingRow
+                    key={h}
+                    header={h}
+                    value={headerAssignments[h]}
+                    onChange={(value) => setHeaderAssignments((prev) => ({ ...prev, [h]: value }))}
+                  />
                 ))}
               </div>
             </div>
