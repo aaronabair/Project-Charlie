@@ -58,8 +58,9 @@ function normalizeStatus(raw) {
 }
 
 // Some source cells stack multiple line items in one cell via Alt+Enter
-// (e.g. "1\n5\n17\n21"). Quantity should be their sum, not a parse failure.
-function normalizeQuantity(raw) {
+// (e.g. "1\n5\n17\n21" or "200\n150\n50"). Quantity and Total Incentive both
+// use this: the real value is the sum of the stacked lines, not a parse failure.
+function normalizeSummedNumber(raw) {
   if (raw === '' || raw == null) return { value: null, summed: false, parts: [] }
 
   const parts = String(raw)
@@ -104,12 +105,19 @@ function normalizeValue(raw, type) {
   }
 }
 
+const SUMMED_FIELDS = {
+  quantity: 'Quantity',
+  total_incentive: 'Total Incentive',
+}
+
 function buildMappedRow(sourceRow, finalMap, dataYear, batchNumber) {
   const target = { data_year: dataYear, batch_number: batchNumber }
   let flaggedStatus = false
   let statusOriginal = null
   let flaggedQuantity = false
   let quantityDetail = null
+  let flaggedTotalIncentive = false
+  let totalIncentiveDetail = null
 
   for (const header of Object.keys(finalMap)) {
     const targetField = finalMap[header]
@@ -127,12 +135,18 @@ function buildMappedRow(sourceRow, finalMap, dataYear, batchNumber) {
       continue
     }
 
-    if (targetField === 'quantity') {
-      const result = normalizeQuantity(raw)
-      target.quantity = result.value
+    if (targetField in SUMMED_FIELDS) {
+      const result = normalizeSummedNumber(raw)
+      target[targetField] = result.value
       if (result.summed) {
-        flaggedQuantity = true
-        quantityDetail = `Quantity: summed ${result.parts.length} values (${result.parts.join('+')}=${result.value})`
+        const detail = `${SUMMED_FIELDS[targetField]}: summed ${result.parts.length} values (${result.parts.join('+')}=${result.value})`
+        if (targetField === 'quantity') {
+          flaggedQuantity = true
+          quantityDetail = detail
+        } else {
+          flaggedTotalIncentive = true
+          totalIncentiveDetail = detail
+        }
       }
       continue
     }
@@ -141,7 +155,16 @@ function buildMappedRow(sourceRow, finalMap, dataYear, batchNumber) {
     target[targetField] = normalizeValue(raw, meta?.type ?? 'text')
   }
 
-  return { target, sourceRow, flaggedStatus, statusOriginal, flaggedQuantity, quantityDetail }
+  return {
+    target,
+    sourceRow,
+    flaggedStatus,
+    statusOriginal,
+    flaggedQuantity,
+    quantityDetail,
+    flaggedTotalIncentive,
+    totalIncentiveDetail,
+  }
 }
 
 function parseCsv(file) {
@@ -385,6 +408,7 @@ export default function DataUpload() {
     const numberedRows = mappedRows.map((r, i) => ({ ...r, rowNumber: i + 2 })) // +2: header row + 1-indexing
     const flaggedStatus = numberedRows.filter((r) => r.flaggedStatus)
     const flaggedQuantity = numberedRows.filter((r) => r.flaggedQuantity)
+    const flaggedTotalIncentive = numberedRows.filter((r) => r.flaggedTotalIncentive)
     const importedCount = data?.length ?? payload.length
 
     // Best-effort: the import itself already succeeded, so a notification
@@ -396,7 +420,7 @@ export default function DataUpload() {
     })
     if (notifyError) console.error('Failed to send upload notification:', notifyError)
 
-    setSummary({ imported: importedCount, flaggedStatus, flaggedQuantity })
+    setSummary({ imported: importedCount, flaggedStatus, flaggedQuantity, flaggedTotalIncentive })
     setStep('summary')
   }
 
@@ -584,8 +608,8 @@ export default function DataUpload() {
           </p>
           <p className="text-sm text-gray-500">
             Previewing the first 10 of {mappedRows.length} rows. Statuses that couldn't be matched are
-            flagged and default to "active". Quantity cells with multiple stacked line items are summed
-            and flagged for a quick visual check.
+            flagged and default to "active". Quantity and Total Incentive cells with multiple stacked line
+            items are summed and flagged for a quick visual check.
           </p>
 
           <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -615,6 +639,13 @@ export default function DataUpload() {
                           ) : col.value === 'quantity' && row.flaggedQuantity ? (
                             <span className="inline-flex items-center gap-1" title={row.quantityDetail}>
                               {row.target.quantity}
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                summed
+                              </span>
+                            </span>
+                          ) : col.value === 'total_incentive' && row.flaggedTotalIncentive ? (
+                            <span className="inline-flex items-center gap-1" title={row.totalIncentiveDetail}>
+                              {row.target.total_incentive}
                               <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
                                 summed
                               </span>
@@ -656,9 +687,11 @@ export default function DataUpload() {
           <div className="rounded-lg border border-gray-200 bg-white p-5">
             <p className="text-sm text-gray-900">{summary.imported} rows imported.</p>
 
-            {summary.flaggedStatus.length === 0 && summary.flaggedQuantity.length === 0 && (
-              <p className="mt-2 text-sm text-gray-500">No rows needed review.</p>
-            )}
+            {summary.flaggedStatus.length === 0 &&
+              summary.flaggedQuantity.length === 0 &&
+              summary.flaggedTotalIncentive.length === 0 && (
+                <p className="mt-2 text-sm text-gray-500">No rows needed review.</p>
+              )}
 
             {summary.flaggedStatus.length > 0 && (
               <>
@@ -689,6 +722,23 @@ export default function DataUpload() {
                     <li key={i}>
                       Row {r.rowNumber}
                       {r.target.invoice ? ` (invoice ${r.target.invoice})` : ''}: {r.quantityDetail}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {summary.flaggedTotalIncentive.length > 0 && (
+              <>
+                <p className="mt-3 text-sm text-amber-700">
+                  {summary.flaggedTotalIncentive.length} row{summary.flaggedTotalIncentive.length === 1 ? '' : 's'}{' '}
+                  had a stacked total incentive cell — please confirm the sum:
+                </p>
+                <ul className="mt-2 space-y-1 text-sm text-gray-600">
+                  {summary.flaggedTotalIncentive.map((r, i) => (
+                    <li key={i}>
+                      Row {r.rowNumber}
+                      {r.target.invoice ? ` (invoice ${r.target.invoice})` : ''}: {r.totalIncentiveDetail}
                     </li>
                   ))}
                 </ul>
