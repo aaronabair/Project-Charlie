@@ -193,7 +193,7 @@ export default function DataAdmin() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
+  const [statusFilter, setStatusFilter] = useState('Active')
 
   const [reopenTarget, setReopenTarget] = useState(null)
   const [reopenReason, setReopenReason] = useState('')

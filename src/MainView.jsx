@@ -7,7 +7,7 @@ export default function MainView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
+  const [statusFilter, setStatusFilter] = useState('Active')
 
   const loadInspections = useCallback(async () => {
     const { data, error } = await supabase

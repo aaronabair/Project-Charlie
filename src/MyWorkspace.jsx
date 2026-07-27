@@ -8,8 +8,21 @@ import {
   formatDate,
   daysOpen,
   daysOpenValue,
+  isInspectionOpen,
 } from './inspectionFormat'
 import { EditableText, EditableDate, EditableStatus, EditableCheckbox } from './EditableCells'
+
+// "Active" preserves the existing reminder behavior: a pass/fail row still
+// stays visible here until its report is actually finished. "Pass"/"Fail"
+// only match genuinely finished rows — otherwise those tabs would show nothing,
+// since a completed row is still "Active" until report_finished_at is set.
+function matchesStatusFilter(row, filter) {
+  if (filter === 'All') return true
+  if (filter === 'Active') return isInspectionOpen(row)
+  if (filter === 'Pass') return row.status === 'pass' && !isInspectionOpen(row)
+  if (filter === 'Fail') return row.status === 'fail' && !isInspectionOpen(row)
+  return true
+}
 
 const COLUMNS = [
   { key: 'invoice', label: 'Invoice', sortable: true },
@@ -43,7 +56,7 @@ export default function MyWorkspace() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
+  const [statusFilter, setStatusFilter] = useState('Active')
   const [sortColumn, setSortColumn] = useState(null)
   const [sortDirection, setSortDirection] = useState('asc')
 
@@ -58,9 +71,6 @@ export default function MyWorkspace() {
         `id, invoice, inspection_type, inspection_date, status, report_finished_at, notes, distributor, customer, city, ${DETAIL_COLUMNS}`
       )
       .eq('assigned_to', userId)
-      // Once dispositioned (pass/fail) AND the report is finished, it's off the
-      // inspector's plate — it moves to Data Admin's Upload Required queue.
-      .or('status.eq.active,report_finished_at.is.null')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -107,7 +117,7 @@ export default function MyWorkspace() {
           setSavedViewId(data.id)
           if (data.filters) {
             setSearch(data.filters.search ?? '')
-            setStatusFilter(data.filters.status ?? 'All')
+            setStatusFilter(data.filters.status ?? 'Active')
           }
           if (data.sort) {
             setSortColumn(data.sort.column ?? null)
@@ -169,7 +179,7 @@ export default function MyWorkspace() {
     const query = search.trim().toLowerCase()
 
     return inspections.filter((row) => {
-      if (statusFilter !== 'All' && row.status !== statusFilter.toLowerCase()) return false
+      if (!matchesStatusFilter(row, statusFilter)) return false
       if (!query) return true
 
       return (
