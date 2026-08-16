@@ -11,6 +11,13 @@ import {
   isInspectionOpen,
 } from './inspectionFormat'
 import { EditableText, EditableDate, EditableStatus, EditableCheckbox } from './EditableCells'
+import {
+  useExceptionRequests,
+  buildLatestExceptionMap,
+  insertExceptionRequest,
+  ExceptionCell,
+  ExceptionRequestModal,
+} from './exceptionRequests'
 
 // "Active" preserves the existing reminder behavior: a pass/fail row still
 // stays visible here until its report is actually finished. "Pass"/"Fail"
@@ -26,6 +33,7 @@ function matchesStatusFilter(row, filter) {
 
 const COLUMNS = [
   { key: 'invoice', label: 'Invoice', sortable: true },
+  { key: 'exception', label: 'Exception', sortable: false },
   { key: 'inspection_type', label: 'Inspection Type', sortable: true },
   { key: 'inspector', label: 'Primary Inspector', sortable: false },
   { key: 'inspection_date', label: 'Inspection Date', sortable: true },
@@ -62,6 +70,14 @@ export default function MyWorkspace() {
 
   const [savedViewId, setSavedViewId] = useState(null)
   const [viewLoaded, setViewLoaded] = useState(false)
+
+  const { requests: exceptionRequests, refetch: refetchExceptionRequests } = useExceptionRequests()
+  const exceptionMap = useMemo(() => buildLatestExceptionMap(exceptionRequests), [exceptionRequests])
+
+  const [exceptionTarget, setExceptionTarget] = useState(null)
+  const [exceptionReason, setExceptionReason] = useState('')
+  const [exceptionError, setExceptionError] = useState(null)
+  const [exceptionSubmitting, setExceptionSubmitting] = useState(false)
 
   const loadInspections = useCallback(async () => {
     if (!userId) return
@@ -164,6 +180,46 @@ export default function MyWorkspace() {
     }
     setStatus('saved')
     setTimeout(() => setStatus(null), 2000)
+  }
+
+  function openExceptionModal(row) {
+    setExceptionTarget({ id: row.id, invoice: row.invoice })
+    setExceptionReason('')
+    setExceptionError(null)
+  }
+
+  function closeExceptionModal() {
+    setExceptionTarget(null)
+    setExceptionReason('')
+    setExceptionError(null)
+  }
+
+  async function handleExceptionConfirm() {
+    const reason = exceptionReason.trim()
+    if (!reason) {
+      setExceptionError('A reason is required.')
+      return
+    }
+
+    setExceptionSubmitting(true)
+    setExceptionError(null)
+
+    const { error } = await insertExceptionRequest({
+      inspectionId: exceptionTarget.id,
+      requestedBy: userId,
+      reason,
+    })
+
+    setExceptionSubmitting(false)
+
+    if (error) {
+      setExceptionError(error.message)
+      return
+    }
+
+    // Don't wait on the realtime channel to reflect our own insert — refetch now.
+    refetchExceptionRequests()
+    closeExceptionModal()
   }
 
   function toggleSort(column) {
@@ -278,6 +334,9 @@ export default function MyWorkspace() {
                 {sorted.map((row) => (
                   <tr key={row.id}>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
+                    <td className="px-5 py-3">
+                      <ExceptionCell request={exceptionMap[row.id]} onCheck={() => openExceptionModal(row)} />
+                    </td>
                     <td className="px-5 py-3 text-gray-700">{formatInspectionType(row.inspection_type)}</td>
                     <td className="px-5 py-3 text-gray-700">{profile?.full_name ?? '—'}</td>
                     <td className="px-5 py-3">
@@ -344,6 +403,16 @@ export default function MyWorkspace() {
           </div>
         )}
       </div>
+
+      <ExceptionRequestModal
+        target={exceptionTarget}
+        reason={exceptionReason}
+        setReason={setExceptionReason}
+        error={exceptionError}
+        submitting={exceptionSubmitting}
+        onCancel={closeExceptionModal}
+        onConfirm={handleExceptionConfirm}
+      />
     </div>
   )
 }

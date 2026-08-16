@@ -7,6 +7,7 @@ import Dashboard from './Dashboard'
 import MainView from './MainView'
 import MyWorkspace from './MyWorkspace'
 import Notifications from './Notifications'
+import { usePendingExceptionCount } from './exceptionRequests'
 
 // Pulls in the (large) xlsx parser — code-split so inspectors/data viewers
 // never download it, since only admin/data_master can reach this page.
@@ -14,11 +15,13 @@ const DataUpload = lazy(() => import('./DataUpload'))
 const DataAdmin = lazy(() => import('./DataAdmin'))
 const Reports = lazy(() => import('./Reports'))
 const UserManagement = lazy(() => import('./UserManagement'))
+const Exceptions = lazy(() => import('./Exceptions'))
 
 function Nav() {
   const { profile, signOut } = useAuth()
   const canManage = profile?.role === 'admin' || profile?.role === 'data_master'
   const isAdmin = profile?.role === 'admin'
+  const pendingExceptionCount = usePendingExceptionCount(isAdmin)
 
   return (
     <nav className="flex items-center justify-between border-b border-gray-200 px-8 py-4">
@@ -34,7 +37,17 @@ function Nav() {
           </>
         )}
         {isAdmin && (
-          <Link to="/user-management" className="font-medium text-gray-700 hover:text-gray-900">User Management</Link>
+          <>
+            <Link to="/user-management" className="font-medium text-gray-700 hover:text-gray-900">User Management</Link>
+            <Link to="/exceptions" className="relative font-medium text-gray-700 hover:text-gray-900">
+              Exceptions
+              {pendingExceptionCount > 0 && (
+                <span className="absolute -right-3 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-medium text-white">
+                  {pendingExceptionCount > 99 ? '99+' : pendingExceptionCount}
+                </span>
+              )}
+            </Link>
+          </>
         )}
       </div>
       <div className="flex items-center gap-4 text-sm">
@@ -115,6 +128,14 @@ export default function App() {
               element={
                 <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
                   <UserManagement />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/exceptions"
+              element={
+                <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading...</div>}>
+                  <Exceptions />
                 </Suspense>
               }
             />

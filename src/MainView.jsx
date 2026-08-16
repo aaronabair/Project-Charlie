@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { STATUS_FILTERS, DETAIL_COLUMNS, StatusBadge, formatDate, formatInspectionType, daysOpen } from './inspectionFormat'
+import { useExceptionRequests, buildLatestExceptionMap, ExceptionCellReadOnly } from './exceptionRequests'
 
 export default function MainView() {
   const [inspections, setInspections] = useState([])
@@ -8,6 +9,9 @@ export default function MainView() {
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Active')
+
+  const { requests: exceptionRequests } = useExceptionRequests()
+  const exceptionMap = useMemo(() => buildLatestExceptionMap(exceptionRequests), [exceptionRequests])
 
   const loadInspections = useCallback(async () => {
     const { data, error } = await supabase
@@ -116,6 +120,7 @@ export default function MainView() {
               <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="px-5 py-3 font-medium">Invoice</th>
+                  <th className="px-5 py-3 font-medium">Exception</th>
                   <th className="px-5 py-3 font-medium">Inspection Type</th>
                   <th className="px-5 py-3 font-medium">Primary Inspector</th>
                   <th className="px-5 py-3 font-medium">Inspection Date</th>
@@ -144,6 +149,9 @@ export default function MainView() {
                 {displayRows.map((row) => (
                   <tr key={row.id}>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
+                    <td className="px-5 py-3">
+                      <ExceptionCellReadOnly request={exceptionMap[row.id]} />
+                    </td>
                     <td className="px-5 py-3 text-gray-700">{formatInspectionType(row.inspection_type)}</td>
                     <td className="px-5 py-3 text-gray-700">{row.profiles?.full_name ?? 'Unassigned'}</td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(row.inspection_date)}</td>

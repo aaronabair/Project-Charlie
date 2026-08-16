@@ -3,11 +3,19 @@ import { supabase } from './supabaseClient'
 import { useAuth } from './AuthContext'
 import { STATUS_FILTERS, DETAIL_COLUMNS, formatDate, daysOpen, isUploadRequired } from './inspectionFormat'
 import { SaveStatus, EditableText, EditableDate, EditableStatus, EditableCheckbox } from './EditableCells'
+import {
+  useExceptionRequests,
+  buildLatestExceptionMap,
+  insertExceptionRequest,
+  ExceptionCell,
+  ExceptionRequestModal,
+} from './exceptionRequests'
 
 const FILTERS = [...STATUS_FILTERS, 'Upload Required']
 
 const COLUMNS = [
   { key: 'invoice', label: 'Invoice' },
+  { key: 'exception', label: 'Exception' },
   { key: 'inspection_type', label: 'Inspection Type' },
   { key: 'quantity', label: 'Quantity' },
   { key: 'total_incentive', label: 'Total Incentive' },
@@ -185,8 +193,9 @@ function ReopenModal({ target, reason, setReason, error, submitting, onCancel, o
 }
 
 export default function DataAdmin() {
-  const { profile } = useAuth()
+  const { session, profile } = useAuth()
   const canManage = profile?.role === 'admin' || profile?.role === 'data_master'
+  const userId = session?.user?.id
 
   const [inspections, setInspections] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -199,6 +208,14 @@ export default function DataAdmin() {
   const [reopenReason, setReopenReason] = useState('')
   const [reopenError, setReopenError] = useState(null)
   const [reopenSubmitting, setReopenSubmitting] = useState(false)
+
+  const { requests: exceptionRequests, refetch: refetchExceptionRequests } = useExceptionRequests()
+  const exceptionMap = useMemo(() => buildLatestExceptionMap(exceptionRequests), [exceptionRequests])
+
+  const [exceptionTarget, setExceptionTarget] = useState(null)
+  const [exceptionReason, setExceptionReason] = useState('')
+  const [exceptionError, setExceptionError] = useState(null)
+  const [exceptionSubmitting, setExceptionSubmitting] = useState(false)
 
   const loadInspections = useCallback(async () => {
     const { data, error } = await supabase
@@ -334,6 +351,46 @@ export default function DataAdmin() {
     closeReopenModal()
   }
 
+  function openExceptionModal(row) {
+    setExceptionTarget({ id: row.id, invoice: row.invoice })
+    setExceptionReason('')
+    setExceptionError(null)
+  }
+
+  function closeExceptionModal() {
+    setExceptionTarget(null)
+    setExceptionReason('')
+    setExceptionError(null)
+  }
+
+  async function handleExceptionConfirm() {
+    const reason = exceptionReason.trim()
+    if (!reason) {
+      setExceptionError('A reason is required.')
+      return
+    }
+
+    setExceptionSubmitting(true)
+    setExceptionError(null)
+
+    const { error } = await insertExceptionRequest({
+      inspectionId: exceptionTarget.id,
+      requestedBy: userId,
+      reason,
+    })
+
+    setExceptionSubmitting(false)
+
+    if (error) {
+      setExceptionError(error.message)
+      return
+    }
+
+    // Don't wait on the realtime channel to reflect our own insert — refetch now.
+    refetchExceptionRequests()
+    closeExceptionModal()
+  }
+
   const profilesById = useMemo(() => {
     const map = {}
     for (const p of profiles) map[p.id] = p.full_name
@@ -438,6 +495,9 @@ export default function DataAdmin() {
                 {filtered.map((row) => (
                   <tr key={row.id}>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
+                    <td className="px-5 py-3">
+                      <ExceptionCell request={exceptionMap[row.id]} onCheck={() => openExceptionModal(row)} />
+                    </td>
                     <td className="px-5 py-3">
                       <EditableInspectionType
                         key={`${row.id}-inspection_type-${row.inspection_type}-${row.inspection_type_overridden}`}
@@ -568,6 +628,16 @@ export default function DataAdmin() {
         submitting={reopenSubmitting}
         onCancel={closeReopenModal}
         onConfirm={handleReopenConfirm}
+      />
+
+      <ExceptionRequestModal
+        target={exceptionTarget}
+        reason={exceptionReason}
+        setReason={setExceptionReason}
+        error={exceptionError}
+        submitting={exceptionSubmitting}
+        onCancel={closeExceptionModal}
+        onConfirm={handleExceptionConfirm}
       />
     </div>
   )
