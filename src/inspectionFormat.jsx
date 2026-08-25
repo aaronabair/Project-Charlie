@@ -10,7 +10,7 @@ const STATUS_STYLES = {
 // "view details" expansion per row. uploaded_at is fetched here but never
 // displayed; it's needed internally by computeDaysOpenRaw below.
 export const DETAIL_COLUMNS =
-  'payment, file_request, address, phone, measure, equipment, quantity, total_incentive, additional_information, purchase_date, uploaded_at'
+  'file_request, phone, measure, equipment, quantity, total_incentive, additional_information, purchase_date, uploaded_at'
 
 export function StatusBadge({ status }) {
   const style = STATUS_STYLES[status] ?? 'bg-gray-50 text-gray-700'

@@ -22,7 +22,17 @@ function StatusPill({ status }) {
   )
 }
 
-function ApproveModal({ target, name, setName, error, submitting, onCancel, onConfirm }) {
+function ApproveModal({
+  target,
+  name,
+  setName,
+  response,
+  setResponse,
+  error,
+  submitting,
+  onCancel,
+  onConfirm,
+}) {
   if (!target) return null
 
   return (
@@ -32,6 +42,18 @@ function ApproveModal({ target, name, setName, error, submitting, onCancel, onCo
         <p className="mt-1 text-sm text-gray-500">
           Type your name to confirm. This will generate a signed PDF and mark the request approved.
         </p>
+
+        <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="approve-response">
+          Approval Response
+        </label>
+        <textarea
+          id="approve-response"
+          rows={3}
+          value={response}
+          onChange={(e) => setResponse(e.target.value)}
+          placeholder="Explain the basis for this approval"
+          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+        />
 
         <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="approve-name">
           Your name
@@ -58,7 +80,7 @@ function ApproveModal({ target, name, setName, error, submitting, onCancel, onCo
           <button
             type="button"
             onClick={onConfirm}
-            disabled={submitting || !name.trim()}
+            disabled={submitting || !name.trim() || !response.trim()}
             className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {submitting ? 'Approving...' : 'Approve'}
@@ -132,6 +154,9 @@ function RequestRow({ request, inspection, requesterName, reviewerName, onApprov
         {request.status === 'rejected' && request.rejection_note && (
           <p className="mt-1 text-xs text-red-600">Note: {request.rejection_note}</p>
         )}
+        {request.status === 'approved' && request.approval_response && (
+          <p className="mt-1 text-xs text-gray-500">Response: {request.approval_response}</p>
+        )}
         {request.status !== 'pending' && (
           <p className="mt-1 text-xs text-gray-400">
             Reviewed by {reviewerName} · {formatDate(request.reviewed_at)}
@@ -185,6 +210,7 @@ export default function Exceptions() {
 
   const [approveTarget, setApproveTarget] = useState(null)
   const [approveName, setApproveName] = useState('')
+  const [approveResponse, setApproveResponse] = useState('')
   const [approveError, setApproveError] = useState(null)
   const [approveSubmitting, setApproveSubmitting] = useState(false)
 
@@ -197,7 +223,7 @@ export default function Exceptions() {
     const { data, error } = await supabase
       .from('exception_requests')
       .select(
-        'id, inspection_id, requested_by, reason, requested_at, status, reviewed_by, reviewed_at, admin_signature_name, rejection_note, pdf_url'
+        'id, inspection_id, requested_by, reason, requested_at, status, reviewed_by, reviewed_at, admin_signature_name, approval_response, rejection_note, pdf_url'
       )
       .order('requested_at', { ascending: false })
 
@@ -235,15 +261,6 @@ export default function Exceptions() {
           setProfiles(data ?? [])
         }),
     ]).finally(() => setLoading(false))
-
-    const channel = supabase
-      .channel('exceptions-page-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'exception_requests' }, loadRequests)
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
   }, [isAdmin, loadRequests])
 
   const inspectionsById = useMemo(() => {
@@ -266,19 +283,26 @@ export default function Exceptions() {
   function openApproveModal(request) {
     setApproveTarget(request)
     setApproveName('')
+    setApproveResponse('')
     setApproveError(null)
   }
 
   function closeApproveModal() {
     setApproveTarget(null)
     setApproveName('')
+    setApproveResponse('')
     setApproveError(null)
   }
 
   async function handleApproveConfirm() {
     const name = approveName.trim()
+    const response = approveResponse.trim()
     if (!name) {
       setApproveError('Please type your name to confirm.')
+      return
+    }
+    if (!response) {
+      setApproveError('An approval response is required.')
       return
     }
 
@@ -310,11 +334,17 @@ export default function Exceptions() {
     }
 
     y += 4
-    doc.text('Reason:', 14, y)
+    doc.text('Request Reason:', 14, y)
     y += 6
     const reasonLines = doc.splitTextToSize(approveTarget.reason ?? '', 180)
     doc.text(reasonLines, 14, y)
     y += reasonLines.length * 6 + 8
+
+    doc.text('Approval Response:', 14, y)
+    y += 6
+    const responseLines = doc.splitTextToSize(response, 180)
+    doc.text(responseLines, 14, y)
+    y += responseLines.length * 6 + 8
 
     doc.text(`Approved by: ${name}`, 14, y)
     y += 6
@@ -344,6 +374,7 @@ export default function Exceptions() {
         reviewed_by: adminId,
         reviewed_at: new Date().toISOString(),
         admin_signature_name: name,
+        approval_response: response,
         pdf_url: publicUrl,
       })
       .eq('id', approveTarget.id)
@@ -463,6 +494,8 @@ export default function Exceptions() {
         target={approveTarget}
         name={approveName}
         setName={setApproveName}
+        response={approveResponse}
+        setResponse={setApproveResponse}
         error={approveError}
         submitting={approveSubmitting}
         onCancel={closeApproveModal}

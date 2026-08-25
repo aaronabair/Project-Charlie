@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { STATUS_FILTERS, DETAIL_COLUMNS, StatusBadge, formatDate, formatInspectionType, daysOpen } from './inspectionFormat'
 import { useExceptionRequests, buildLatestExceptionMap, ExceptionCellReadOnly } from './exceptionRequests'
+import { useStickyScrollbar, StickyScrollbar } from './StickyScrollbar'
 
 export default function MainView() {
   const [inspections, setInspections] = useState([])
@@ -13,11 +14,13 @@ export default function MainView() {
   const { requests: exceptionRequests } = useExceptionRequests()
   const exceptionMap = useMemo(() => buildLatestExceptionMap(exceptionRequests), [exceptionRequests])
 
+  const scrollSync = useStickyScrollbar()
+
   const loadInspections = useCallback(async () => {
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, city, data_year, batch_number, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
+        `id, invoice, inspection_type, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
       )
       .order('created_at', { ascending: false })
 
@@ -31,15 +34,6 @@ export default function MainView() {
   useEffect(() => {
     setLoading(true)
     loadInspections().finally(() => setLoading(false))
-
-    const channel = supabase
-      .channel('main-view-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, loadInspections)
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
   }, [loadInspections])
 
   const filtered = useMemo(() => {
@@ -115,7 +109,7 @@ export default function MainView() {
         ) : displayRows.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-gray-500">No inspections match your filters</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div ref={scrollSync.contentRef} onScroll={scrollSync.onContentScroll} className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
@@ -130,10 +124,7 @@ export default function MainView() {
                   <th className="px-5 py-3 font-medium">Inspector Notes</th>
                   <th className="px-5 py-3 font-medium">Distributor</th>
                   <th className="px-5 py-3 font-medium">Customer</th>
-                  <th className="px-5 py-3 font-medium">City</th>
-                  <th className="px-5 py-3 font-medium">Payment</th>
                   <th className="px-5 py-3 font-medium">File Request</th>
-                  <th className="px-5 py-3 font-medium">Address</th>
                   <th className="px-5 py-3 font-medium">Phone</th>
                   <th className="px-5 py-3 font-medium">Measure</th>
                   <th className="px-5 py-3 font-medium">Equipment</th>
@@ -165,10 +156,7 @@ export default function MainView() {
                     </td>
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.city || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.payment ?? '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.file_request || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.address || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
@@ -192,6 +180,13 @@ export default function MainView() {
           </div>
         )}
       </div>
+
+      <StickyScrollbar
+        trackRef={scrollSync.trackRef}
+        onScroll={scrollSync.onTrackScroll}
+        scrollWidth={scrollSync.scrollWidth}
+        visible={scrollSync.visible}
+      />
     </div>
   )
 }

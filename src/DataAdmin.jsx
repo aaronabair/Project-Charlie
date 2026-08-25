@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { useAuth } from './AuthContext'
-import { STATUS_FILTERS, DETAIL_COLUMNS, formatDate, daysOpen, isUploadRequired } from './inspectionFormat'
+import { STATUS_FILTERS, DETAIL_COLUMNS, formatDate, daysOpen, daysOpenValue, isUploadRequired } from './inspectionFormat'
 import { SaveStatus, EditableText, EditableDate, EditableStatus, EditableCheckbox } from './EditableCells'
 import {
   useExceptionRequests,
@@ -10,34 +10,32 @@ import {
   ExceptionCell,
   ExceptionRequestModal,
 } from './exceptionRequests'
+import { useStickyScrollbar, StickyScrollbar } from './StickyScrollbar'
 
 const FILTERS = [...STATUS_FILTERS, 'Upload Required']
 
 const COLUMNS = [
-  { key: 'invoice', label: 'Invoice' },
-  { key: 'exception', label: 'Exception' },
-  { key: 'inspection_type', label: 'Inspection Type' },
-  { key: 'quantity', label: 'Quantity' },
-  { key: 'total_incentive', label: 'Total Incentive' },
-  { key: 'inspector', label: 'Primary Inspector' },
-  { key: 'inspection_date', label: 'Inspection Date' },
-  { key: 'days_open', label: 'Days Open' },
-  { key: 'status', label: 'Inspection Result' },
-  { key: 'report_finished_at', label: 'Report Finished' },
-  { key: 'notes', label: 'Inspector Notes' },
-  { key: 'distributor', label: 'Distributor' },
-  { key: 'customer', label: 'Customer' },
-  { key: 'city', label: 'City' },
-  { key: 'payment', label: 'Payment' },
-  { key: 'file_request', label: 'File Request' },
-  { key: 'address', label: 'Address' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'measure', label: 'Measure' },
-  { key: 'equipment', label: 'Equipment' },
-  { key: 'additional_information', label: 'Additional Information' },
-  { key: 'purchase_date', label: 'Purchase Date' },
-  { key: 'data_year', label: 'Data Year' },
-  { key: 'batch_number', label: 'Batch #' },
+  { key: 'invoice', label: 'Invoice', sortable: true },
+  { key: 'exception', label: 'Exception', sortable: false },
+  { key: 'inspection_type', label: 'Inspection Type', sortable: true },
+  { key: 'quantity', label: 'Quantity', sortable: false },
+  { key: 'total_incentive', label: 'Total Incentive', sortable: false },
+  { key: 'inspector', label: 'Primary Inspector', sortable: false },
+  { key: 'inspection_date', label: 'Inspection Date', sortable: true },
+  { key: 'days_open', label: 'Days Open', sortable: true },
+  { key: 'status', label: 'Inspection Result', sortable: true },
+  { key: 'report_finished_at', label: 'Report Finished', sortable: true },
+  { key: 'notes', label: 'Inspector Notes', sortable: false },
+  { key: 'distributor', label: 'Distributor', sortable: true },
+  { key: 'customer', label: 'Customer', sortable: true },
+  { key: 'file_request', label: 'File Request', sortable: false },
+  { key: 'phone', label: 'Phone', sortable: false },
+  { key: 'measure', label: 'Measure', sortable: false },
+  { key: 'equipment', label: 'Equipment', sortable: false },
+  { key: 'additional_information', label: 'Additional Information', sortable: false },
+  { key: 'purchase_date', label: 'Purchase Date', sortable: false },
+  { key: 'data_year', label: 'Data Year', sortable: true },
+  { key: 'batch_number', label: 'Batch #', sortable: true },
 ]
 
 function EditableAssignee({ rowId, value, profiles, onSave }) {
@@ -203,6 +201,8 @@ export default function DataAdmin() {
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Active')
+  const [sortColumn, setSortColumn] = useState(null)
+  const [sortDirection, setSortDirection] = useState('asc')
 
   const [reopenTarget, setReopenTarget] = useState(null)
   const [reopenReason, setReopenReason] = useState('')
@@ -217,11 +217,13 @@ export default function DataAdmin() {
   const [exceptionError, setExceptionError] = useState(null)
   const [exceptionSubmitting, setExceptionSubmitting] = useState(false)
 
+  const scrollSync = useStickyScrollbar()
+
   const loadInspections = useCallback(async () => {
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_type_overridden, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, city, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}`
+        `id, invoice, inspection_type, inspection_type_overridden, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}`
       )
       .order('created_at', { ascending: false })
 
@@ -250,16 +252,16 @@ export default function DataAdmin() {
           setProfiles(data ?? [])
         }),
     ]).finally(() => setLoading(false))
-
-    const channel = supabase
-      .channel('data-admin-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, loadInspections)
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
   }, [canManage, loadInspections])
+
+  function toggleSort(column) {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
 
   async function handleFieldSave(rowId, field, value, setStatus) {
     setStatus('saving')
@@ -417,6 +419,18 @@ export default function DataAdmin() {
     })
   }, [inspections, search, statusFilter, profilesById])
 
+  const sorted = useMemo(() => {
+    if (!sortColumn) return filtered
+    const dir = sortDirection === 'asc' ? 1 : -1
+    return [...filtered].sort((a, b) => {
+      const av = sortColumn === 'days_open' ? daysOpenValue(a) ?? -1 : a[sortColumn] ?? ''
+      const bv = sortColumn === 'days_open' ? daysOpenValue(b) ?? -1 : b[sortColumn] ?? ''
+      if (av < bv) return -1 * dir
+      if (av > bv) return 1 * dir
+      return 0
+    })
+  }, [filtered, sortColumn, sortDirection])
+
   if (!canManage) {
     return (
       <div className="p-8">
@@ -479,20 +493,31 @@ export default function DataAdmin() {
         ) : filtered.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-gray-500">No inspections match your filters</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div ref={scrollSync.contentRef} onScroll={scrollSync.onContentScroll} className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
                   {COLUMNS.map((col) => (
                     <th key={col.key} className="px-5 py-3 font-medium">
-                      {col.label}
+                      {col.sortable ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(col.key)}
+                          className="flex items-center gap-1"
+                        >
+                          {col.label}
+                          {sortColumn === col.key && (sortDirection === 'asc' ? '▲' : '▼')}
+                        </button>
+                      ) : (
+                        col.label
+                      )}
                     </th>
                   ))}
                   <th className="px-5 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((row) => (
+                {sorted.map((row) => (
                   <tr key={row.id}>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
                     <td className="px-5 py-3">
@@ -573,10 +598,7 @@ export default function DataAdmin() {
                     </td>
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.city || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.payment ?? '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.file_request || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.address || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
@@ -619,6 +641,13 @@ export default function DataAdmin() {
           </div>
         )}
       </div>
+
+      <StickyScrollbar
+        trackRef={scrollSync.trackRef}
+        onScroll={scrollSync.onTrackScroll}
+        scrollWidth={scrollSync.scrollWidth}
+        visible={scrollSync.visible}
+      />
 
       <ReopenModal
         target={reopenTarget}

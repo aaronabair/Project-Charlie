@@ -8,8 +8,7 @@ const SKIP = '__skip__'
 
 const TARGET_FIELDS = [
   { value: 'invoice', label: 'Invoice', type: 'text' },
-  { value: 'file_request', label: 'File Request', type: 'text' },
-  { value: 'payment', label: 'Payment', type: 'number' },
+  { value: 'file_request', label: 'File Request', type: 'digits' },
   { value: 'assigned_to', label: 'Primary Inspector (name → ID not yet supported)', type: 'assigned' },
   { value: 'inspection_date', label: 'Inspection Date', type: 'date' },
   { value: 'status', label: 'Inspection Result', type: 'status' },
@@ -19,8 +18,6 @@ const TARGET_FIELDS = [
   { value: 'purchase_date', label: 'Purchase Date', type: 'date' },
   { value: 'customer', label: 'Customer', type: 'text' },
   { value: 'phone', label: 'Phone', type: 'text' },
-  { value: 'address', label: 'Address', type: 'text' },
-  { value: 'city', label: 'City', type: 'text' },
   { value: 'measure', label: 'Measure', type: 'text' },
   { value: 'equipment', label: 'Equipment', type: 'text' },
   { value: 'quantity', label: 'Quantity', type: 'number' },
@@ -91,6 +88,13 @@ function normalizeValue(raw, type) {
     case 'number': {
       const n = Number(String(raw).replace(/[^0-9.-]/g, ''))
       return Number.isFinite(n) ? n : null
+    }
+    case 'digits': {
+      // Strip everything but digits (e.g. "REQ-12345" -> "12345") rather than
+      // trying to parse the raw value as a number — these cells are reference
+      // codes, not numeric quantities, so a leading letter shouldn't zero them out.
+      const digits = String(raw).replace(/[^0-9]/g, '')
+      return digits === '' ? null : parseInt(digits, 10)
     }
     case 'date': {
       const d = raw instanceof Date ? raw : new Date(raw)

@@ -18,6 +18,7 @@ import {
   ExceptionCell,
   ExceptionRequestModal,
 } from './exceptionRequests'
+import { useStickyScrollbar, StickyScrollbar } from './StickyScrollbar'
 
 // "Active" preserves the existing reminder behavior: a pass/fail row still
 // stays visible here until its report is actually finished. "Pass"/"Fail"
@@ -43,10 +44,7 @@ const COLUMNS = [
   { key: 'notes', label: 'Inspector Notes', sortable: false },
   { key: 'distributor', label: 'Distributor', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true },
-  { key: 'city', label: 'City', sortable: true },
-  { key: 'payment', label: 'Payment', sortable: false },
   { key: 'file_request', label: 'File Request', sortable: false },
-  { key: 'address', label: 'Address', sortable: false },
   { key: 'phone', label: 'Phone', sortable: false },
   { key: 'measure', label: 'Measure', sortable: false },
   { key: 'equipment', label: 'Equipment', sortable: false },
@@ -79,12 +77,14 @@ export default function MyWorkspace() {
   const [exceptionError, setExceptionError] = useState(null)
   const [exceptionSubmitting, setExceptionSubmitting] = useState(false)
 
+  const scrollSync = useStickyScrollbar()
+
   const loadInspections = useCallback(async () => {
     if (!userId) return
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_date, status, report_finished_at, notes, distributor, customer, city, ${DETAIL_COLUMNS}`
+        `id, invoice, inspection_type, inspection_date, status, report_finished_at, notes, distributor, customer, ${DETAIL_COLUMNS}`
       )
       .eq('assigned_to', userId)
       .order('created_at', { ascending: false })
@@ -100,19 +100,6 @@ export default function MyWorkspace() {
     if (!userId) return
     setLoading(true)
     loadInspections().finally(() => setLoading(false))
-
-    const channel = supabase
-      .channel(`my-workspace-changes-${userId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'inspections', filter: `assigned_to=eq.${userId}` },
-        loadInspections
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
   }, [userId, loadInspections])
 
   // Load this user's saved filters/sort once, then persist changes (debounced).
@@ -308,7 +295,7 @@ export default function MyWorkspace() {
         ) : sorted.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-gray-500">No inspections match your filters</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div ref={scrollSync.contentRef} onScroll={scrollSync.onContentScroll} className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
@@ -377,10 +364,7 @@ export default function MyWorkspace() {
                     </td>
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.city || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.payment ?? '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.file_request || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.address || '—'}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>
@@ -403,6 +387,13 @@ export default function MyWorkspace() {
           </div>
         )}
       </div>
+
+      <StickyScrollbar
+        trackRef={scrollSync.trackRef}
+        onScroll={scrollSync.onTrackScroll}
+        scrollWidth={scrollSync.scrollWidth}
+        visible={scrollSync.visible}
+      />
 
       <ExceptionRequestModal
         target={exceptionTarget}

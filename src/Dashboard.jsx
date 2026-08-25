@@ -160,16 +160,6 @@ export default function Dashboard() {
   useEffect(() => {
     setLoading(true)
     Promise.all([loadInspections(), loadActivity()]).finally(() => setLoading(false))
-
-    const channel = supabase
-      .channel('dashboard-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, loadInspections)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_log' }, loadActivity)
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
   }, [loadInspections, loadActivity])
 
   const openInspections = useMemo(() => inspections.filter(isInspectionOpen), [inspections])

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 
 const REQUEST_COLUMNS =
-  'id, inspection_id, requested_by, reason, requested_at, status, reviewed_by, reviewed_at, admin_signature_name, rejection_note, pdf_url'
+  'id, inspection_id, requested_by, reason, requested_at, status, reviewed_by, reviewed_at, admin_signature_name, approval_response, rejection_note, pdf_url'
 
 // Shared by MainView, MyWorkspace, and DataAdmin — each fetches inspections on
 // its own, then layers this in as a second query and joins client-side rather
@@ -31,15 +31,6 @@ export function useExceptionRequests(enabled = true) {
 
     setLoading(true)
     loadRequests().finally(() => setLoading(false))
-
-    const channel = supabase
-      .channel('exception-requests-watch')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'exception_requests' }, loadRequests)
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
   }, [enabled, loadRequests])
 
   return { requests, loading, refetch: loadRequests }
@@ -139,7 +130,7 @@ export function ExceptionRequestModal({ target, reason, setReason, error, submit
         </p>
 
         <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="exception-reason">
-          Reason
+          Request Reason
         </label>
         <textarea
           id="exception-reason"
@@ -194,17 +185,7 @@ export function usePendingExceptionCount(enabled) {
 
   useEffect(() => {
     if (!enabled) return
-
     loadCount()
-
-    const channel = supabase
-      .channel('exception-requests-count')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'exception_requests' }, loadCount)
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
   }, [enabled, loadCount])
 
   return count

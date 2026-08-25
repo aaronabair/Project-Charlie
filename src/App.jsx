@@ -17,6 +17,24 @@ const Reports = lazy(() => import('./Reports'))
 const UserManagement = lazy(() => import('./UserManagement'))
 const Exceptions = lazy(() => import('./Exceptions'))
 
+function RefreshIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+    >
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  )
+}
+
 function Nav() {
   const { profile, signOut } = useAuth()
   const canManage = profile?.role === 'admin' || profile?.role === 'data_master'
@@ -51,6 +69,15 @@ function Nav() {
         )}
       </div>
       <div className="flex items-center gap-4 text-sm">
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+          aria-label="Refresh"
+          title="Refresh"
+        >
+          <RefreshIcon />
+        </button>
         <Notifications />
         <span className="text-gray-500">
           {profile?.full_name} <span className="text-gray-400">({profile?.role})</span>

@@ -69,7 +69,7 @@ export default function Reports() {
     let query = supabase
       .from('inspections')
       .select(
-        'id, invoice, inspection_type, inspection_date, status, report_finished_at, uploaded_at, notes, distributor, customer, city, assigned_to, profiles!inspections_assigned_to_fkey(full_name)'
+        'id, invoice, inspection_type, inspection_date, status, report_finished_at, uploaded_at, notes, distributor, customer, assigned_to, profiles!inspections_assigned_to_fkey(full_name)'
       )
       .order('inspection_date', { ascending: false })
 
@@ -147,7 +147,6 @@ export default function Reports() {
       'Inspector Notes': row.notes ?? '',
       Distributor: row.distributor ?? '',
       Customer: row.customer ?? '',
-      City: row.city ?? '',
     }))
 
     const sheet = XLSX.utils.json_to_sheet(rows)
