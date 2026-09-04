@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { useAuth } from './AuthContext'
 import { STATUS_FILTERS, DETAIL_COLUMNS, StatusBadge, formatDate, formatInspectionType, daysOpen } from './inspectionFormat'
 import { useExceptionRequests, buildLatestExceptionMap, ExceptionCellReadOnly } from './exceptionRequests'
 import { useStickyScrollbar, StickyScrollbar } from './StickyScrollbar'
 
 export default function MainView() {
+  const { session } = useAuth()
+  const userId = session?.user?.id
+
   const [inspections, setInspections] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Active')
+
+  // The one interactive exception to this page's otherwise strict read-only
+  // rule: claiming unassigned rows for yourself.
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [assigning, setAssigning] = useState(false)
+  const [assignError, setAssignError] = useState(null)
 
   const { requests: exceptionRequests } = useExceptionRequests()
   const exceptionMap = useMemo(() => buildLatestExceptionMap(exceptionRequests), [exceptionRequests])
@@ -20,7 +30,7 @@ export default function MainView() {
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
+        `id, invoice, inspection_type, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
       )
       .order('created_at', { ascending: false })
 
@@ -35,6 +45,43 @@ export default function MainView() {
     setLoading(true)
     loadInspections().finally(() => setLoading(false))
   }, [loadInspections])
+
+  // A stale selection shouldn't reference rows that are no longer visible.
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [search, statusFilter])
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleAssignToMe() {
+    if (selectedIds.size === 0 || !userId) return
+
+    setAssigning(true)
+    setAssignError(null)
+
+    const { error } = await supabase
+      .from('inspections')
+      .update({ assigned_to: userId })
+      .in('id', [...selectedIds])
+
+    setAssigning(false)
+
+    if (error) {
+      setAssignError(error.message)
+      return
+    }
+
+    // No realtime auto-refresh anymore — refetch explicitly, then clear the selection.
+    await loadInspections()
+    setSelectedIds(new Set())
+  }
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -103,6 +150,18 @@ export default function MainView() {
         </div>
       </div>
 
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleAssignToMe}
+          disabled={selectedIds.size === 0 || assigning}
+          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {assigning ? 'Assigning...' : `Assign to me${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
+        </button>
+        {assignError && <p className="text-sm text-red-600">{assignError}</p>}
+      </div>
+
       <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white">
         {inspections.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-gray-500">No inspections yet</p>
@@ -113,6 +172,7 @@ export default function MainView() {
             <table className="w-full text-left text-sm">
               <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
+                  <th className="px-5 py-3 font-medium"></th>
                   <th className="px-5 py-3 font-medium">Invoice</th>
                   <th className="px-5 py-3 font-medium">Exception</th>
                   <th className="px-5 py-3 font-medium">Inspection Type</th>
@@ -139,6 +199,16 @@ export default function MainView() {
               <tbody className="divide-y divide-gray-100">
                 {displayRows.map((row) => (
                   <tr key={row.id}>
+                    <td className="px-5 py-3">
+                      {row.assigned_to == null && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(row.id)}
+                          onChange={() => toggleSelected(row.id)}
+                          className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
+                        />
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
                     <td className="px-5 py-3">
                       <ExceptionCellReadOnly request={exceptionMap[row.id]} />
