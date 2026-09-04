@@ -37,16 +37,23 @@ export function formatInspectionType(value) {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-// An inspection is genuinely open until report_finished_at is actually set —
-// a pass/fail disposition alone doesn't close it. report_uploaded_at is a
-// separate downstream step and has no bearing on open/closed.
+// An inspection is genuinely open until report_finished_at AND inspection_date
+// are both actually set — a pass/fail disposition alone doesn't close it.
+// report_uploaded_at is a separate downstream step and has no bearing on
+// open/closed.
 export function isInspectionOpen(row) {
-  return row.status === 'active' || !row.report_finished_at
+  return row.status === 'active' || !row.report_finished_at || !row.inspection_date
 }
 
-// Closed (report_finished_at set) but the report itself hasn't been uploaded yet.
+// Closed (report_finished_at and inspection_date set) but the report itself
+// hasn't been uploaded yet.
 export function isUploadRequired(row) {
-  return (row.status === 'pass' || row.status === 'fail') && !!row.report_finished_at && !row.report_uploaded_at
+  return (
+    (row.status === 'pass' || row.status === 'fail') &&
+    !!row.report_finished_at &&
+    !!row.inspection_date &&
+    !row.report_uploaded_at
+  )
 }
 
 // "Days open" = time in the system, not time since the physical inspection.
