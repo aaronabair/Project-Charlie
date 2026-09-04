@@ -1,8 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { useAuth } from './AuthContext'
-import { STATUS_FILTERS, DETAIL_COLUMNS, formatDate, daysOpen, daysOpenValue, isUploadRequired } from './inspectionFormat'
-import { SaveStatus, EditableText, EditableDate, EditableStatus, EditableCheckbox } from './EditableCells'
+import {
+  STATUS_FILTERS,
+  DETAIL_COLUMNS,
+  COMPLETED_ROW_BG,
+  formatDate,
+  daysOpen,
+  daysOpenValue,
+  isUploadRequired,
+} from './inspectionFormat'
+import {
+  SaveStatus,
+  EditableText,
+  EditableDate,
+  EditableStatus,
+  EditableCallStage,
+  EditableCheckbox,
+} from './EditableCells'
 import {
   useExceptionRequests,
   buildLatestExceptionMap,
@@ -16,8 +31,10 @@ const FILTERS = [...STATUS_FILTERS, 'Upload Required']
 
 const COLUMNS = [
   { key: 'invoice', label: 'Invoice', sortable: true },
+  { key: 'file_request', label: 'File Request', sortable: false },
   { key: 'exception', label: 'Exception', sortable: false },
   { key: 'inspection_type', label: 'Inspection Type', sortable: true },
+  { key: 'call_stage', label: 'Pre/Post', sortable: false },
   { key: 'quantity', label: 'Quantity', sortable: false },
   { key: 'total_incentive', label: 'Total Incentive', sortable: false },
   { key: 'inspector', label: 'Primary Inspector', sortable: false },
@@ -28,7 +45,6 @@ const COLUMNS = [
   { key: 'notes', label: 'Inspector Notes', sortable: false },
   { key: 'distributor', label: 'Distributor', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true },
-  { key: 'file_request', label: 'File Request', sortable: false },
   { key: 'phone', label: 'Phone', sortable: false },
   { key: 'measure', label: 'Measure', sortable: false },
   { key: 'equipment', label: 'Equipment', sortable: false },
@@ -65,7 +81,7 @@ function EditableAssignee({ rowId, value, profiles, onSave }) {
   )
 }
 
-function EditableInspectionType({ rowId, value, overridden, onSave, onReset }) {
+function EditableInspectionType({ rowId, value, overridden, onGreenRow, onSave, onReset }) {
   const [current, setCurrent] = useState(value ?? '')
   const [status, setStatus] = useState(null)
 
@@ -84,14 +100,17 @@ function EditableInspectionType({ rowId, value, overridden, onSave, onReset }) {
         <option value="call">Call</option>
       </select>
       <div className="mt-1 flex items-center gap-2">
-        <span className={overridden ? 'text-xs text-amber-600' : 'text-xs text-gray-400'}>
+        {/* Against the green completed-row background, the usual amber/gray
+            tones lose too much contrast to stay legible — fall back to a
+            single dark tone there instead. */}
+        <span className={onGreenRow ? 'text-xs text-gray-900' : overridden ? 'text-xs text-amber-600' : 'text-xs text-gray-400'}>
           {overridden ? 'Overridden' : 'Auto'}
         </span>
         {overridden && (
           <button
             type="button"
             onClick={() => onReset(rowId, setStatus)}
-            className="text-xs text-gray-500 underline hover:text-gray-900"
+            className={onGreenRow ? 'text-xs text-gray-900 underline hover:text-gray-700' : 'text-xs text-gray-500 underline hover:text-gray-900'}
           >
             Reset to auto
           </button>
@@ -223,7 +242,7 @@ export default function DataAdmin() {
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_type_overridden, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}`
+        `id, invoice, inspection_type, inspection_type_overridden, call_stage, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}`
       )
       .order('created_at', { ascending: false })
 
@@ -518,8 +537,12 @@ export default function DataAdmin() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {sorted.map((row) => (
-                  <tr key={row.id}>
+                  <tr
+                    key={row.id}
+                    style={row.report_uploaded_at ? { backgroundColor: COMPLETED_ROW_BG } : undefined}
+                  >
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3">
                       <ExceptionCell request={exceptionMap[row.id]} onCheck={() => openExceptionModal(row)} />
                     </td>
@@ -529,8 +552,17 @@ export default function DataAdmin() {
                         rowId={row.id}
                         value={row.inspection_type}
                         overridden={row.inspection_type_overridden}
+                        onGreenRow={!!row.report_uploaded_at}
                         onSave={handleInspectionTypeSave}
                         onReset={handleInspectionTypeReset}
+                      />
+                    </td>
+                    <td className="px-5 py-3">
+                      <EditableCallStage
+                        key={`${row.id}-call_stage-${row.call_stage}`}
+                        rowId={row.id}
+                        value={row.call_stage}
+                        onSave={handleFieldSave}
                       />
                     </td>
                     <td className="px-5 py-3">
@@ -598,7 +630,6 @@ export default function DataAdmin() {
                     </td>
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>

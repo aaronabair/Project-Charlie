@@ -72,6 +72,29 @@ export function EditableCheckbox({ rowId, field, value, onSave }) {
   )
 }
 
+export function EditableCallStage({ rowId, value, onSave }) {
+  const [stage, setStage] = useState(value ?? 'post')
+  const [status, setStatus] = useState(null)
+
+  return (
+    <div>
+      <select
+        value={stage}
+        onChange={(e) => {
+          const next = e.target.value
+          setStage(next)
+          onSave(rowId, 'call_stage', next, setStatus)
+        }}
+        className="rounded-md border border-gray-300 px-2 py-1 text-sm capitalize focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+      >
+        <option value="pre">Pre</option>
+        <option value="post">Post</option>
+      </select>
+      <SaveStatus status={status} />
+    </div>
+  )
+}
+
 export function EditableStatus({ rowId, value, onSave }) {
   const [status, setStatus] = useState(value)
   const [saveStatus, setSaveStatus] = useState(null)

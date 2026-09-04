@@ -4,13 +4,14 @@ import { useAuth } from './AuthContext'
 import {
   STATUS_FILTERS,
   DETAIL_COLUMNS,
+  COMPLETED_ROW_BG,
   formatInspectionType,
   formatDate,
   daysOpen,
   daysOpenValue,
   isInspectionOpen,
 } from './inspectionFormat'
-import { EditableText, EditableDate, EditableStatus, EditableCheckbox } from './EditableCells'
+import { EditableText, EditableDate, EditableStatus, EditableCallStage, EditableCheckbox } from './EditableCells'
 import {
   useExceptionRequests,
   buildLatestExceptionMap,
@@ -34,8 +35,10 @@ function matchesStatusFilter(row, filter) {
 
 const COLUMNS = [
   { key: 'invoice', label: 'Invoice', sortable: true },
+  { key: 'file_request', label: 'File Request', sortable: false },
   { key: 'exception', label: 'Exception', sortable: false },
   { key: 'inspection_type', label: 'Inspection Type', sortable: true },
+  { key: 'call_stage', label: 'Pre/Post', sortable: false },
   { key: 'inspector', label: 'Primary Inspector', sortable: false },
   { key: 'inspection_date', label: 'Inspection Date', sortable: true },
   { key: 'days_open', label: 'Days Open', sortable: true },
@@ -44,7 +47,6 @@ const COLUMNS = [
   { key: 'notes', label: 'Inspector Notes', sortable: false },
   { key: 'distributor', label: 'Distributor', sortable: true },
   { key: 'customer', label: 'Customer', sortable: true },
-  { key: 'file_request', label: 'File Request', sortable: false },
   { key: 'phone', label: 'Phone', sortable: false },
   { key: 'measure', label: 'Measure', sortable: false },
   { key: 'equipment', label: 'Equipment', sortable: false },
@@ -84,7 +86,7 @@ export default function MyWorkspace() {
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_date, status, report_finished_at, notes, distributor, customer, ${DETAIL_COLUMNS}`
+        `id, invoice, inspection_type, call_stage, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, ${DETAIL_COLUMNS}`
       )
       .eq('assigned_to', userId)
       .order('created_at', { ascending: false })
@@ -319,12 +321,24 @@ export default function MyWorkspace() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {sorted.map((row) => (
-                  <tr key={row.id}>
+                  <tr
+                    key={row.id}
+                    style={row.report_uploaded_at ? { backgroundColor: COMPLETED_ROW_BG } : undefined}
+                  >
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3">
                       <ExceptionCell request={exceptionMap[row.id]} onCheck={() => openExceptionModal(row)} />
                     </td>
                     <td className="px-5 py-3 text-gray-700">{formatInspectionType(row.inspection_type)}</td>
+                    <td className="px-5 py-3">
+                      <EditableCallStage
+                        key={`${row.id}-call_stage-${row.call_stage}`}
+                        rowId={row.id}
+                        value={row.call_stage}
+                        onSave={handleFieldSave}
+                      />
+                    </td>
                     <td className="px-5 py-3 text-gray-700">{profile?.full_name ?? '—'}</td>
                     <td className="px-5 py-3">
                       <EditableDate
@@ -364,7 +378,6 @@ export default function MyWorkspace() {
                     </td>
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>

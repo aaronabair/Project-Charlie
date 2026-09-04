@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { useAuth } from './AuthContext'
-import { STATUS_FILTERS, DETAIL_COLUMNS, StatusBadge, formatDate, formatInspectionType, daysOpen } from './inspectionFormat'
+import {
+  STATUS_FILTERS,
+  DETAIL_COLUMNS,
+  COMPLETED_ROW_BG,
+  StatusBadge,
+  formatDate,
+  formatInspectionType,
+  capitalize,
+  daysOpen,
+} from './inspectionFormat'
 import { useExceptionRequests, buildLatestExceptionMap, ExceptionCellReadOnly } from './exceptionRequests'
 import { useStickyScrollbar, StickyScrollbar } from './StickyScrollbar'
 
@@ -30,7 +39,7 @@ export default function MainView() {
     const { data, error } = await supabase
       .from('inspections')
       .select(
-        `id, invoice, inspection_type, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
+        `id, invoice, inspection_type, call_stage, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
       )
       .order('created_at', { ascending: false })
 
@@ -174,8 +183,10 @@ export default function MainView() {
                 <tr>
                   <th className="px-5 py-3 font-medium"></th>
                   <th className="px-5 py-3 font-medium">Invoice</th>
+                  <th className="px-5 py-3 font-medium">File Request</th>
                   <th className="px-5 py-3 font-medium">Exception</th>
                   <th className="px-5 py-3 font-medium">Inspection Type</th>
+                  <th className="px-5 py-3 font-medium">Pre/Post</th>
                   <th className="px-5 py-3 font-medium">Primary Inspector</th>
                   <th className="px-5 py-3 font-medium">Inspection Date</th>
                   <th className="px-5 py-3 font-medium">Days Open</th>
@@ -184,7 +195,6 @@ export default function MainView() {
                   <th className="px-5 py-3 font-medium">Inspector Notes</th>
                   <th className="px-5 py-3 font-medium">Distributor</th>
                   <th className="px-5 py-3 font-medium">Customer</th>
-                  <th className="px-5 py-3 font-medium">File Request</th>
                   <th className="px-5 py-3 font-medium">Phone</th>
                   <th className="px-5 py-3 font-medium">Measure</th>
                   <th className="px-5 py-3 font-medium">Equipment</th>
@@ -198,7 +208,7 @@ export default function MainView() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayRows.map((row) => (
-                  <tr key={row.id}>
+                  <tr key={row.id} style={row.report_uploaded_at ? { backgroundColor: COMPLETED_ROW_BG } : undefined}>
                     <td className="px-5 py-3">
                       {row.assigned_to == null && (
                         <input
@@ -210,10 +220,12 @@ export default function MainView() {
                       )}
                     </td>
                     <td className="px-5 py-3 text-gray-700">{row.invoice}</td>
+                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3">
                       <ExceptionCellReadOnly request={exceptionMap[row.id]} />
                     </td>
                     <td className="px-5 py-3 text-gray-700">{formatInspectionType(row.inspection_type)}</td>
+                    <td className="px-5 py-3 text-gray-700">{capitalize(row.call_stage)}</td>
                     <td className="px-5 py-3 text-gray-700">{row.profiles?.full_name ?? 'Unassigned'}</td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(row.inspection_date)}</td>
                     <td className="px-5 py-3 text-gray-700">{daysOpen(row)}</td>
@@ -221,12 +233,15 @@ export default function MainView() {
                       <StatusBadge status={row.status} />
                     </td>
                     <td className="px-5 py-3 text-gray-700">{formatDate(row.report_finished_at)}</td>
-                    <td className="min-w-64 whitespace-normal break-words px-5 py-3 text-gray-500">
+                    <td
+                      className={`min-w-64 whitespace-normal break-words px-5 py-3 ${
+                        row.report_uploaded_at ? 'text-gray-900' : 'text-gray-500'
+                      }`}
+                    >
                       {row.notes || '—'}
                     </td>
                     <td className="px-5 py-3 text-gray-700">{row.distributor || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.customer || '—'}</td>
-                    <td className="px-5 py-3 text-gray-700">{row.file_request ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.phone || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.measure || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{row.equipment || '—'}</td>

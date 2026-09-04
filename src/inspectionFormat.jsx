@@ -1,5 +1,9 @@
 export const STATUS_FILTERS = ['All', 'Active', 'Pass', 'Fail']
 
+// Row highlight for a fully-completed inspection (report uploaded) — the same
+// exact color everywhere it's used, so the three tables agree visually.
+export const COMPLETED_ROW_BG = '#87ae73'
+
 const STATUS_STYLES = {
   active: 'bg-blue-50 text-blue-700',
   pass: 'bg-green-50 text-green-700',
@@ -30,11 +34,17 @@ export function formatDate(dateStr) {
   })
 }
 
+// Shared by any lowercase single-word enum column (inspection_type,
+// call_stage) that just needs a capitalized display, or a dash when unset.
+export function capitalize(value) {
+  if (!value) return '—'
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
 // inspection_type is stored lowercase ('physical'/'call') to match the
 // inspection_kind enum; display it capitalized.
 export function formatInspectionType(value) {
-  if (!value) return '—'
-  return value.charAt(0).toUpperCase() + value.slice(1)
+  return capitalize(value)
 }
 
 // An inspection is genuinely open until report_finished_at AND inspection_date
@@ -54,6 +64,11 @@ export function isUploadRequired(row) {
     !!row.inspection_date &&
     !row.report_uploaded_at
   )
+}
+
+// Strict "fully completed" definition — the report itself has been uploaded.
+export function isFullyUploaded(row) {
+  return !!row.report_uploaded_at
 }
 
 // "Days open" = time in the system, not time since the physical inspection.
