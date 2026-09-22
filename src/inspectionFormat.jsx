@@ -99,7 +99,11 @@ export function daysOpen(row) {
 }
 
 // <input type="date"> needs a plain YYYY-MM-DD value, not a full ISO timestamp.
+// Malformed/unparseable source data (seen in real imported Bravo records)
+// must not throw — fall back to blank so only that cell is affected.
 export function toDateInputValue(dateStr) {
   if (!dateStr) return ''
-  return new Date(dateStr).toISOString().slice(0, 10)
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
 }
