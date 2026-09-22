@@ -44,7 +44,7 @@ export default function Login() {
         <h1 className="text-xl font-semibold text-gray-900">
           {isSignUp ? 'Create an account' : 'Sign in'}
         </h1>
-        <p className="mt-1 text-sm text-gray-500">Project Charlie inspection tracking</p>
+        <p className="mt-1 text-sm text-gray-500">Mission Midstream inspection tracking</p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           {isSignUp && (

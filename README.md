@@ -1,4 +1,4 @@
-# Project Charlie
+# Mission Midstream
 
 Inspection tracking platform — replacement for the Excel-based BIDP workflow.
 
@@ -18,5 +18,5 @@ as environment variables in Netlify's site settings (same values as your `.env`)
 
 ## Build order
 
-See the Project Charlie handoff doc for the full 14-step build plan.
+See the Mission Midstream handoff doc for the full 14-step build plan.
 This repo currently covers through Step 3 (React app foundation + routing).
