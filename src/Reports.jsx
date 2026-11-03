@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { supabase } from './supabaseClient'
+import { fetchAllRows } from './supabaseFetch'
 import { useAuth } from './AuthContext'
 import { formatDate, daysOpen, daysOpenValue } from './inspectionFormat'
 
@@ -66,17 +67,18 @@ export default function Reports() {
   const [endDate, setEndDate] = useState('')
 
   const loadInspections = useCallback(async () => {
-    let query = supabase
-      .from('inspections')
-      .select(
-        'id, invoice, inspection_type, inspection_date, status, report_finished_at, uploaded_at, notes, distributor, customer, assigned_to, profiles!inspections_assigned_to_fkey(full_name)'
-      )
-      .order('inspection_date', { ascending: false })
+    const { data, error } = await fetchAllRows(() => {
+      let query = supabase
+        .from('inspections')
+        .select(
+          'id, invoice, inspection_type, inspection_date, status, report_finished_at, uploaded_at, notes, distributor, customer, assigned_to, profiles!inspections_assigned_to_fkey(full_name)'
+        )
+        .order('inspection_date', { ascending: false })
 
-    if (startDate) query = query.gte('inspection_date', startDate)
-    if (endDate) query = query.lte('inspection_date', endDate)
-
-    const { data, error } = await query
+      if (startDate) query = query.gte('inspection_date', startDate)
+      if (endDate) query = query.lte('inspection_date', endDate)
+      return query
+    })
 
     if (error) {
       setError(error.message)

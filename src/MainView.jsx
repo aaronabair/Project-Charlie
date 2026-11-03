@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { fetchAllRows } from './supabaseFetch'
 import { useAuth } from './AuthContext'
 import {
   STATUS_FILTERS,
@@ -36,12 +37,14 @@ export default function MainView() {
   const scrollSync = useStickyScrollbar()
 
   const loadInspections = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('inspections')
-      .select(
-        `id, invoice, inspection_type, call_stage, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
-      )
-      .order('created_at', { ascending: false })
+    const { data, error } = await fetchAllRows(() =>
+      supabase
+        .from('inspections')
+        .select(
+          `id, invoice, inspection_type, call_stage, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, data_year, batch_number, assigned_to, ${DETAIL_COLUMNS}, profiles!inspections_assigned_to_fkey(full_name)`
+        )
+        .order('created_at', { ascending: false })
+    )
 
     if (error) {
       setError(error.message)

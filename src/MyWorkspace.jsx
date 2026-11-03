@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { fetchAllRows } from './supabaseFetch'
 import { useAuth } from './AuthContext'
 import {
   STATUS_FILTERS,
@@ -83,13 +84,15 @@ export default function MyWorkspace() {
 
   const loadInspections = useCallback(async () => {
     if (!userId) return
-    const { data, error } = await supabase
-      .from('inspections')
-      .select(
-        `id, invoice, inspection_type, call_stage, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, ${DETAIL_COLUMNS}`
-      )
-      .eq('assigned_to', userId)
-      .order('created_at', { ascending: false })
+    const { data, error } = await fetchAllRows(() =>
+      supabase
+        .from('inspections')
+        .select(
+          `id, invoice, inspection_type, call_stage, inspection_date, status, report_finished_at, report_uploaded_at, notes, distributor, customer, ${DETAIL_COLUMNS}`
+        )
+        .eq('assigned_to', userId)
+        .order('created_at', { ascending: false })
+    )
 
     if (error) {
       setError(error.message)

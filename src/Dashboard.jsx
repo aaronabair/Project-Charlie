@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { fetchAllRows } from './supabaseFetch'
 import { isInspectionOpen, isUploadRequired, daysOpen, daysOpenValue, formatDate } from './inspectionFormat'
 import { formatTimeAgo } from './timeFormat'
 
@@ -127,12 +128,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // Must include every column the inspectionFormat helpers read
+  // (isInspectionOpen / isUploadRequired / daysOpenValue), or rows silently
+  // misclassify.
   const loadInspections = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('inspections')
-      .select(
-        'id, invoice, assigned_to, status, uploaded_at, report_finished_at, report_uploaded_at, data_year, batch_number, profiles!inspections_assigned_to_fkey(full_name)'
-      )
+    const { data, error } = await fetchAllRows(() =>
+      supabase
+        .from('inspections')
+        .select(
+          'id, invoice, assigned_to, status, inspection_date, uploaded_at, report_finished_at, report_uploaded_at, data_year, batch_number, profiles!inspections_assigned_to_fkey(full_name)'
+        )
+    )
 
     if (error) {
       setError(error.message)

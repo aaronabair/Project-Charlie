@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import jsPDF from 'jspdf'
 import { supabase } from './supabaseClient'
+import { fetchAllRows } from './supabaseFetch'
 import { useAuth } from './AuthContext'
 import { formatDate, formatInspectionType } from './inspectionFormat'
 import { formatTimeAgo } from './timeFormat'
@@ -220,12 +221,14 @@ export default function Exceptions() {
   const [rejectSubmitting, setRejectSubmitting] = useState(false)
 
   const loadRequests = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('exception_requests')
-      .select(
-        'id, inspection_id, requested_by, reason, requested_at, status, reviewed_by, reviewed_at, admin_signature_name, approval_response, rejection_note, pdf_url'
-      )
-      .order('requested_at', { ascending: false })
+    const { data, error } = await fetchAllRows(() =>
+      supabase
+        .from('exception_requests')
+        .select(
+          'id, inspection_id, requested_by, reason, requested_at, status, reviewed_by, reviewed_at, admin_signature_name, approval_response, rejection_note, pdf_url'
+        )
+        .order('requested_at', { ascending: false })
+    )
 
     if (error) {
       setError(error.message)
@@ -240,10 +243,11 @@ export default function Exceptions() {
     setLoading(true)
     Promise.all([
       loadRequests(),
-      supabase
-        .from('inspections')
-        .select('id, invoice, customer, distributor, inspection_type, inspection_date, assigned_to')
-        .then(({ data, error }) => {
+      fetchAllRows(() =>
+        supabase
+          .from('inspections')
+          .select('id, invoice, customer, distributor, inspection_type, inspection_date, assigned_to')
+      ).then(({ data, error }) => {
           if (error) {
             setError(error.message)
             return

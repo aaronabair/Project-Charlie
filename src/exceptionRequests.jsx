@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { fetchAllRows } from './supabaseFetch'
 
 const REQUEST_COLUMNS =
   'id, inspection_id, requested_by, reason, requested_at, status, reviewed_by, reviewed_at, admin_signature_name, approval_response, rejection_note, pdf_url'
@@ -13,10 +14,12 @@ export function useExceptionRequests(enabled = true) {
 
   const loadRequests = useCallback(async () => {
     if (!enabled) return
-    const { data, error } = await supabase
-      .from('exception_requests')
-      .select(REQUEST_COLUMNS)
-      .order('requested_at', { ascending: false })
+    const { data, error } = await fetchAllRows(() =>
+      supabase
+        .from('exception_requests')
+        .select(REQUEST_COLUMNS)
+        .order('requested_at', { ascending: false })
+    )
 
     if (error) {
       console.error('Failed to load exception requests:', error)
